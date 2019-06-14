@@ -89,7 +89,7 @@ def get_domain_ip(domain):
 
 
 if __name__ == '__main__':
-    # print(read_header('header.txt'))
+    # print(read_header('domain_check_header.txt'))
     print('查询条件： 所有记录  已备案  未备案  未知')
     print('查询条件： 所有记录  已备案  未备案  未知')
     print('查询条件： 所有记录  已备案  未备案  未知')
@@ -99,6 +99,6 @@ if __name__ == '__main__':
         status = input()
         if status == 'exit':
             break
-        get_comment('header.txt', status)
+        get_comment('domain_check_header.txt', status)
         print('\n')
 
