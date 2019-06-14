@@ -1,0 +1,7 @@
+Cache-Control: max-age=0
+Upgrade-Insecure-Requests: 1
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.131 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3
+Accept-Encoding: gzip, deflate, br
+Accept-Language: zh-CN,zh;q=0.9
+Cookie: fts=1516111761; buvid3=DF653250-92C9-4B23-8A05-46CB9EC47E7531024infoc; pgv_pvi=5088384000; LIVE_BUVID=925d8ef35e5bb6fd00cd6327b805342f; LIVE_BUVID__ckMd5=32d571b9ea85fde0; stardustvideo=1; CURRENT_FNVAL=16; CURRENT_QUALITY=80; UM_distinctid=1685a649af681-0d1daa1d6d26f8-6313363-384000-1685a649af8148a; sid=5dz5kb4l; rpdid=|(u)YkJu)||J0J'ullY|u~kYm; DedeUserID=67087670; DedeUserID__ckMd5=e45c7a62ef95118d; SESSDATA=e1bd2542%2C1560512976%2C98c08b51; bili_jct=06b93ef386a2352b6fd4ea0f4a095fa3; finger=b3372c5f; bp_t_offset_67087670=263493327332298179; _dfcaptcha=596916c6de93b10bc27a06d7213be821
