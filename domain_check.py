@@ -34,7 +34,6 @@ def read_header(head_file):
 
 
 def get_domain_ip(domain):
-    print('查询并导出中，请稍等.....')
     try:
         ipadd = socket.getaddrinfo(domain, 'http')
         b = []
@@ -69,6 +68,8 @@ def output(head_file, payload, state):
     table = get_soup(head_file, payload, url)
 
     if table:
+        print('查询并导出中，请稍等.....')
+
         counter = 1
         l1 = []
         for a in table:
