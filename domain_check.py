@@ -3,7 +3,9 @@
 import requests
 import socket
 import pandas
+import time
 from bs4 import BeautifulSoup
+
 
 # 所有记录
 all_records = "select  * from domainrecord where  (id NOT IN (SELECT TOP 0 id FROM domainrecord order by id desc ))  order by id desc"
@@ -31,6 +33,21 @@ def read_header(head_file):
         header_dict[key.strip()] = val.strip()
 
     return header_dict
+
+
+def check_domain_status(domain):
+    zhanzhang_url = 'http://icp.chinaz.com/record/' + domain
+    payl = 't=2&host=' + domain
+
+    client = requests.session()
+    comment = client.post(zhanzhang_url, headers=read_header('domain_status_header.txt'), data=payl)
+    comment.encoding = 'utf8'
+    comment_soup = BeautifulSoup(comment.text, 'lxml')
+
+    if comment_soup.find('div', class_="IcpMain02").text != '\n':
+        return '已备案'
+    else:
+        return '未备案'
 
 
 def get_domain_ip(domain):
@@ -68,13 +85,13 @@ def output(head_file, payload, state):
     table = get_soup(head_file, payload, url)
 
     if table:
-        print('查询并导出中，请稍等.....')
+        print('查询并导出中，请稍等.....   时间参考：100条数据约30秒')
 
-        counter = 1
+        counter = 0
         l1 = []
         for a in table:
             d1 = {}
-
+            counter += 1
             d1['number'] = str(counter)
             d1['id'] = a.find('id').text
             d1['domain'] = a.find('domainstr').text
@@ -83,12 +100,15 @@ def output(head_file, payload, state):
             d1['icp'] = a.find('icpnumber').text
             d1['unit'] = a.find('unit').text
             d1['lasttime'] = a.find('lasttime').text
+            d1['signation_state'] = check_domain_status(d1['domain'])
             l1.append(d1)
-            counter += 1
+            # print(counter)
 
         asf = pandas.DataFrame(l1)
         asf.to_excel('domain_{}.xlsx'.format(state))
-        print('已导出{}条数据,至运行目录寻找domain_{}.xlsx文件'.format(counter-1, state), '\n')
+        print('已导出{}条数据,至运行目录寻找domain_{}.xlsx文件'.format(counter, state))
+        time.sleep(0.4)
+        print('表中signation为 未备案 的项，由于网站原因，不一定准确，务必手动复查', '\n')
         return
 
 
