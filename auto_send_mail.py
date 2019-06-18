@@ -47,11 +47,22 @@ if __name__ == '__main__':
     # 使用Linux解释器 & WIN解释器
     import datetime
 
+    today = datetime.date.today()
+    the_year, the_month, the_day, yesterday = str(today.year), str(today.month), str(today.day), str(int(today.day) - 1)
+    date = the_year + '.' + the_month + '.' + yesterday
+    the_date = the_year + '.' + the_month + '.' + the_day
+    date_yesterday = the_year + '.' + the_month + '.' + yesterday
+
     while True:
         print('班次： 白   晚')
         banci = input()
-        if banci == '白' or banci == '晚':
+        if banci == '白':
             which_duty = banci
+            the_date = date
+            print('\n')
+        elif banci == '晚':
+            which_duty = banci
+            the_date = date_yesterday
             print('\n')
         elif banci == 'exit':
             break
@@ -59,9 +70,6 @@ if __name__ == '__main__':
             print('什么东西？？', '\n')
             continue
 
-        today = datetime.date.today()
-        the_year, the_month, the_day = str(today.year), str(today.month), str(today.day)
-        the_date = the_year+'.'+the_month+'.'+the_day
         daily_record = 'C:\\Users\\Administrator\\Desktop\\资料汇总\\18.值班日志\\' + the_year + '\\' + the_month + '月份\\' + the_date + '\\' + the_date + '红山网运' + which_duty + '班值班日志.xls'
         data = 'C:\\Users\\Administrator\\Desktop\\资料汇总\\06.机房资料\\机房资料\\' + the_year + '年\\红山机房资料-' + the_date + '.xlsx'
 
