@@ -1,25 +1,46 @@
-# -*- coding=utf-8 -*-
+﻿# -*- coding=utf-8 -*-
 
 import requests
 import socket
 import pandas
 import time
+import dns.resolver
 from bs4 import BeautifulSoup
 
-# 所有记录
-all_records = "select  * from domainrecord where  (id NOT IN (SELECT TOP 0 id FROM domainrecord order by id desc ))  order by id desc"
-# 已备案
-signed = "select  * from domainrecord where recordstate = '2' and (id NOT IN (SELECT TOP 0 id FROM domainrecord where recordstate = '2' order by id desc ))  order by id desc"
-# 未知
-unknown_records = "select  * from domainrecord where recordstate = '0' or recordstate = '1' and (id NOT IN (SELECT TOP 0 id FROM domainrecord where recordstate = '0' or recordstate = '1' order by id desc ))  order by id desc"
-# 未备案
-unsignin = "select  * from domainrecord where recordstate = '3' and (id NOT IN (SELECT TOP 0 id FROM domainrecord where recordstate = '3' order by id desc ))  order by id desc"
-# 统计数据
-statistics = "SELECT COUNT(*) AS number, recordstate FROM domainrecord GROUP BY recordstate"
-# 清空数据
-clear = "delete from domainrecord"
-# 重启
-reboot = 'r'
+
+data_dict = {
+             # 所有记录
+             'all_records': "select  * from domainrecord where  (id NOT IN (SELECT TOP 0 id FROM domainrecord order by id desc ))  order by id desc",
+             # 已备案
+             'signed': "select  * from domainrecord where recordstate = '2' and (id NOT IN (SELECT TOP 0 id FROM domainrecord where recordstate = '2' order by id desc ))  order by id desc",
+             # 未知
+             'unknown_records': "select  * from domainrecord where recordstate = '0' or recordstate = '1' and (id NOT IN (SELECT TOP 0 id FROM domainrecord where recordstate = '0' or recordstate = '1' order by id desc ))  order by id desc",
+             # 未备案
+             'unsignin': "select  * from domainrecord where recordstate = '3' and (id NOT IN (SELECT TOP 0 id FROM domainrecord where recordstate = '3' order by id desc ))  order by id desc",
+             # 统计数据
+             'statistics': "SELECT COUNT(*) AS number, recordstate FROM domainrecord GROUP BY recordstate",
+             # 清空数据
+             'clear': "delete from domainrecord",
+             # 重启
+             'reboot': 'r'
+             }
+
+domain_check_header = {'Connection': 'keep-alive', 'Authorization': 'Basic YWRtaW46MTM4MTk0NTUyMDE=',
+                       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36',
+                       'Content-Type': 'text',
+                       'Accept': '*/*',
+                       'Accept-Encoding': 'gzip, deflate',
+                       'Accept-Language': 'zh-CN,zh;q=0.9'
+                       }
+
+# domain_status_header = {'Cache-Control': 'max-age=0',
+#                         'Upgrade-Insecure-Requests': '1',
+#                         'Content-Type': 'application/x-www-form-urlencoded',
+#                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.131 Safari/537.36',
+#                         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3',
+#                         'Accept-Encoding': 'gzip, deflate',
+#                         'Accept-Language': 'zh-CN,zh;q=0.9'
+#                         }
 
 
 # 添加新监控IP
@@ -38,51 +59,69 @@ reboot = 'r'
 # url = 'http://124.160.238.107:81/cgi-bin/saveconfig.cgi'
 
 
-def read_header(head_file):
-    header_dict = {}
+# def read_header(head_file):
+#     header_dict = {}
+#
+#     header_txt = open(head_file)
+#     for header in header_txt.readlines():
+#         key, val = header.strip().split(':')
+#         header_dict[key.strip()] = val.strip()
+#
+#     return header_dict
 
-    header_txt = open(head_file)
-    for header in header_txt.readlines():
-        key, val = header.strip().split(':')
-        header_dict[key.strip()] = val.strip()
 
-    return header_dict
-
-
-def check_domain_status(domain):
-    zhanzhang_url = 'http://icp.chinaz.com/record/' + domain
-    payl = 't=2&host=' + domain
-
-    client = requests.session()
-    comment = client.post(zhanzhang_url, headers=read_header('d:\\123\\domain_status_header.txt'), data=payl)
-    comment.encoding = 'utf8'
-    comment_soup = BeautifulSoup(comment.text, 'lxml')
-
-    if comment_soup.find('div', class_="IcpMain02").text != '\n':
-        return '已备案'
-    else:
-        return '未备案'
+# def check_domain_status(domain):
+#     zhanzhang_url = 'http://icp.chinaz.com/record/' + domain
+#     payl = 't=2&host=' + domain
+#
+#     client = requests.session()
+#     comment = client.post(zhanzhang_url, headers=read_header(domain_status_header), data=payl)
+#     comment.encoding = 'utf8'
+#     comment_soup = BeautifulSoup(comment.text, 'lxml')
+#
+#     if comment_soup.find('div', class_="IcpMain02").text != '\n':
+#         return '已备案'
+#     else:
+#         return '未备案'
 
 
 def get_domain_ip(domain):
+    ips_list = []
     try:
-        ipadd = socket.getaddrinfo(domain, 'http')
-        b = []
-        for a in ipadd:
-            address = a[4][0]
-            b.append(address)
-        l1 = list(set(b))
-        return l1
-    except socket.gaierror:
-        # print('{}无解析'.format(domain))
+        a_type = dns.resolver.query(domain, 'A')
+        for i in a_type.response.answer:
+            for j in i.items:
+                # print(domain, type(j))
+                if type(j) == dns.rdtypes.IN.A.A:
+                    ips_list.append(j.address)
+        return ips_list
+    except dns.resolver.NXDOMAIN:
+        return '无解析'
+    except dns.resolver.NoAnswer:
         return '无解析'
     except Exception as e:
         print(e)
 
 
-def get_soup(head_file, payload, url):
+# def get_domain_ip(domain):
+#    try:
+#        ipadd = socket.getaddrinfo(domain, 'http')
+#        b = []
+#        for a in ipadd:
+#            address = a[4][0]
+#            b.append(address)
+#        l1 = list(set(b))
+#        return l1
+#    except socket.gaierror:
+#        # print('{}无解析'.format(domain))
+#        return '无解析'
+#    except Exception as e:
+#        print(e)
+
+
+def get_soup(payload, url):
     client = requests.session()
-    comment = client.post(url, headers=read_header(head_file), data=payload)
+    comment = client.post(url, headers=domain_check_header, data=payload)
     comment.encoding = 'utf8'
     comment_soup = BeautifulSoup(comment.text, 'lxml')
 
@@ -94,42 +133,58 @@ def get_soup(head_file, payload, url):
     return table
 
 
-def output(head_file, payload, state):
+def output(payload, state):
     url = 'http://124.160.238.107:81/cgi-bin/ms_readconfig.cgi?id+domainstr+dip+recordstate+icpnumber+unit+phone+lasttime+lastpage+shieldstate+remark'
-    table = get_soup(head_file, payload, url)
+    table = get_soup(payload, url)
 
     if table:
-        print('查询并导出中，请稍等.....   时间参考：100条数据约30秒', '\n')
-
+        table_length = len(table)
+        frontsymbol = '='
+        backsymbol = ' '
         counter = 0
         l1 = []
+
+        print('共{}条数据，查询并导出中，请稍等.....  '.format(table_length))
         for a in table:
             d1 = {}
             counter += 1
-            d1['number'] = str(counter)
-            d1['id'] = a.find('id').text
-            d1['domain'] = a.find('domainstr').text
-            d1['ip'] = get_domain_ip(a.find('domainstr').text)
-            d1['last_page'] = a.find('lastpage').text
-            d1['icp'] = a.find('icpnumber').text
-            d1['unit'] = a.find('unit').text
-            d1['last_time'] = a.find('lasttime').text
-            d1['signation_state'] = check_domain_status(d1['domain'])
+            d1['计数'] = str(counter)
+            d1['系统ID'] = a.find('id').text
+            d1['域名'] = a.find('domainstr').text
+            d1['最后访问页'] = a.find('lastpage').text
+            d1['解析IP'] = get_domain_ip(d1['最后访问页'])
+            d1['备案号'] = a.find('icpnumber').text
+            d1['单位'] = a.find('unit').text
+            d1['最后访问时间'] = a.find('lasttime').text
+            d1['目的IP'] = a.find('dip').text
+            # d1['signation_state'] = check_domain_status(d1['domain'])
             l1.append(d1)
             # print(counter)
 
-        asf = pandas.DataFrame(l1)
-        asf.to_excel('domain_{}.xlsx'.format(state))
-        print('已导出{}条数据,至运行目录寻找domain_{}.xlsx文件'.format(counter, state))
-        time.sleep(0.5)
-        print('表中显示为 未备案 的项，由于查询网站原因，不一定准确，务必手动复查', '\n')
+            # 进度条
+            per = int((counter / table_length) * 100)  # 当前 已完成 百分比
+            linetmpla = "{:%s<%s} {:<2}" % (backsymbol, 33)  # 格式化打印 美化
+            print('\r' + linetmpla.format(frontsymbol * int(per / 3), per) + '%', end='')
+
+        # 导出至excel
+        asdf = pandas.DataFrame(l1)
+        asdf.to_excel('domain_{}.xlsx'.format(state),  # 文件名
+                      sheet_name='{}记录查询'.format(state),  # sheet名
+                      index=False,  # 不显示在第一列的索引号（序号）
+                      columns=['计数', '解析IP', '域名', '最后访问页', '备案号', '单位', '最后访问时间', '系统ID', '目的IP']  # 列排序（实际作用是指定输出哪几列）
+                      )
+
+        print('\n')
+        print('已导出{}条数据,文件路径E:\\123\\domain_{}.xlsx'.format(counter, state))
+        # time.sleep(0.5)
+        # print('表中显示为 未备案 的项，由于查询网站原因，不一定准确，务必手动复查', '\n')
         return
 
 
-def get_count(head_file, payload):
+def get_count(payload):
     url = 'http://124.160.238.107:81/cgi-bin/ms_readconfig.cgi?number+recordstate'
-    table = get_soup(head_file, payload, url)
-
+    table = get_soup(payload, url)
+    # try:
     signed_count, unsigned_count, unknown_count = 0, 0, 0
     for a in table:
         if a.find('recordstate').text == '2':  # 已备案
@@ -144,10 +199,10 @@ def get_count(head_file, payload):
     return
 
 
-def clear_all_record(head_file, payload):
+def clear_all_record(payload):
     url = 'http://124.160.238.107:81/cgi-bin/ms_saveconfig.cgi'
     client = requests.session()
-    comment = client.post(url, headers=read_header(head_file), data=payload)
+    comment = client.post(url, headers=domain_check_header, data=payload)
     comment.encoding = 'utf8'
     comment_soup = BeautifulSoup(comment.text, 'lxml')
 
@@ -159,16 +214,25 @@ def clear_all_record(head_file, payload):
         print('有问题！！!!')
 
 
-def reboot_system(head_file, payload):
+def reboot_system(payload):
     url = 'http://124.160.238.107:81/cgi-bin/reboot.cgi'
     client = requests.session()
-    comment = client.post(url, headers=read_header(head_file), data=payload)
+    comment = client.post(url, headers=domain_check_header, data=payload)
     comment.encoding = 'utf8'
     print(comment)
     print(type(comment))
     print('已发送指令，设备重启中.....', '\n')
-    time.sleep(1)
-    print('请等待1分钟后再操作！！', '\n')
+
+    # 倒计时60s
+    countdown = 60
+    while True:
+        if countdown >= 0:
+            print('\r' + '请务必等待{}秒后再操作！！'.format(countdown), end='')  # \r 再打印 可以覆盖掉之前的
+            countdown -= 1
+            time.sleep(1)
+        else:
+            print('\n')  # 也可以\r 覆盖掉 倒计时0秒
+            break
     return
 
 
@@ -176,8 +240,6 @@ if __name__ == '__main__':
     # print(read_header('domain_check_header.txt'))
     # get_count('domain_check_header.txt', statistics)
     # output('domain_check_header.txt', signed, '未备案')
-
-    header_check = 'd:\\123\\domain_check_header.txt'
 
     print('''操作说明：
         所有 ------- 查询 所有记录 并导出至excel
@@ -187,38 +249,42 @@ if __name__ == '__main__':
         统计 ------- 查询 已备案 未备案 未知 条目总数
         清空 ------- 清空所有数据
         重启 ------- 重启设备
-
 回车立即生效，无确认项！！！''', '\n')
 
     while True:
-        print('请输入操作：')
-        status = input()
-        if status == 'exit':
+        try:
+            status = input('请输入操作：')
+            if status == 'exit':
+                break
+            elif status == '':
+                continue
+            elif status == '所有':
+                pay = data_dict['all_records']
+            elif status == '已备案':
+                pay = data_dict['signed']
+            elif status == '未知':
+                pay = data_dict['unknown_records']
+            elif status == '未备案':
+                pay = data_dict['unsignin']
+            elif status == '统计':
+                pay = data_dict['statistics']
+                get_count(pay)
+                continue
+            elif status == '清空':
+                pay = data_dict['clear']
+                clear_all_record(pay)
+                continue
+            elif status == '重启':
+                pay = data_dict['reboot']
+                reboot_system(pay)
+                continue
+            else:
+                print('状态输入错误', '\n')
+                continue
+            output(pay, status)
+            print('\n')
+        except KeyboardInterrupt:
             break
-        elif status == '':
+        except Exception as ex:
+            print(ex)
             continue
-        elif status == '所有':
-            pay = all_records
-        elif status == '已备案':
-            pay = signed
-        elif status == '未知':
-            pay = unknown_records
-        elif status == '未备案':
-            pay = unsignin
-        elif status == '统计':
-            pay = statistics
-            get_count(header_check, pay)
-            continue
-        elif status == '清空':
-            pay = clear
-            clear_all_record(header_check, pay)
-            continue
-        elif status == '重启':
-            pay = reboot
-            reboot_system(header_check, pay)
-            continue
-        else:
-            print('状态输入错误', '\n')
-            continue
-        output(header_check, pay, status)
-        # print('\n')
