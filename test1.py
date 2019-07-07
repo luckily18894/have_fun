@@ -57,6 +57,45 @@ if __name__ == "__main__":
     payload = 't=2&host=' + domain
 
     # print(get_soup('domain_status_header.txt', payload, url))
-    fenxi('domain_status_header.txt', payload, url)
+    # fenxi('domain_status_header.txt', payload, url)
+
+    import time
+
+    # lineLength = 20
+    # delaySeconds = 0.25
+    # frontSymbol = '='
+    # frontSymbol2 = ['—', '\\', '|', '/']
+    # backSymbol = ' '
+    #
+    # for i in range(10):
+    #     lineTmpla = "{:%s<%s} {} {:<2}" % (backSymbol, lineLength)
+    #     print(lineTmpla)
+    #     for j in range(lineLength):
+    #         tmpSymbol = frontSymbol2[j % (len(frontSymbol2))]
+    #         print("\r" + lineTmpla.format(frontSymbol * j, tmpSymbol, j), end='')
+    #         time.sleep(delaySeconds)
+
+    # t = 5
+    # while True:
+    #     if t >= 0:
+    #         print('\r'+'请务必等待{}秒后再操作！！'.format(t), end='')
+    #         t -= 1
+    #         time.sleep(1)
+    #     else:
+    #         print('\n')
+    #         break
+
+    table_length = 14
+    counter = 0
+    for a in range(table_length):
+        counter += 1
+
+        per = int((counter / table_length) * 100)
+        frontsymbol = '='
+        backsymbol = ' '
+        linetmpla = "{:%s<%s} {:<2}" % (backsymbol, 33)
+        for j in range(table_length):
+            print('\r' + linetmpla.format(frontsymbol * int(per / 3), per) + '%', end='')
+        time.sleep(0.4)
 
 
