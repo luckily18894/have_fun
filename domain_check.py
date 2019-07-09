@@ -5,6 +5,7 @@ import socket
 import pandas
 import time
 import dns.resolver
+import ipaddress
 from bs4 import BeautifulSoup
 
 
@@ -25,7 +26,8 @@ data_dict = {
              'reboot': 'r'
              }
 
-domain_check_header = {'Connection': 'keep-alive', 'Authorization': 'Basic YWRtaW46MTM4MTk0NTUyMDE=',
+domain_check_header = {'Connection': 'keep-alive',
+                       'Authorization': 'Basic YWRtaW46MTM4MTk0NTUyMDE=',
                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36',
                        'Content-Type': 'text',
                        'Accept': '*/*',
@@ -84,6 +86,21 @@ domain_check_header = {'Connection': 'keep-alive', 'Authorization': 'Basic YWRta
 #     else:
 #         return '未备案'
 
+# def get_domain_ip(domain):
+#    try:
+#        ipadd = socket.getaddrinfo(domain, 'http')
+#        b = []
+#        for a in ipadd:
+#            address = a[4][0]
+#            b.append(address)
+#        l1 = list(set(b))
+#        return l1
+#    except socket.gaierror:
+#        # print('{}无解析'.format(domain))
+#        return '无解析'
+#    except Exception as e:
+#        print(e)
+
 
 def get_domain_ip(domain):
     ips_list = []
@@ -101,22 +118,6 @@ def get_domain_ip(domain):
         return '无解析'
     except Exception as e:
         print(e)
-
-
-# def get_domain_ip(domain):
-#    try:
-#        ipadd = socket.getaddrinfo(domain, 'http')
-#        b = []
-#        for a in ipadd:
-#            address = a[4][0]
-#            b.append(address)
-#        l1 = list(set(b))
-#        return l1
-#    except socket.gaierror:
-#        # print('{}无解析'.format(domain))
-#        return '无解析'
-#    except Exception as e:
-#        print(e)
 
 
 def get_soup(payload, url):
@@ -139,12 +140,23 @@ def output(payload, state):
 
     if table:
         table_length = len(table)
-        frontsymbol = '='
-        backsymbol = ' '
         counter = 0
-        l1 = []
+        l1, d2 = [], {}
+        done_sign, none_sign = '>', '_'
+        print('共{}条数据，查询并导出中，请稍等.....'.format(table_length))
+        # 进度条 0%
+        print("{:<33} {:>3}".format(none_sign * 35, 0) + '%', end='')
 
-        print('共{}条数据，查询并导出中，请稍等.....  '.format(table_length))
+        # 客户ip字典
+        c_dict = {'a_ip': '123.11.22.0/29',
+                  'c_ip': '115.231.111.0/24',
+                  'd_ip': '33.22.22.0/28',
+                  }
+        # 网段转换成单个地址的列表
+        for a in c_dict:
+            d2.update({a: [str(ip) for ip in ipaddress.ip_network(c_dict[a])]})
+
+        # 开始处理查询到的数据
         for a in table:
             d1 = {}
             counter += 1
@@ -158,24 +170,31 @@ def output(payload, state):
             d1['最后访问时间'] = a.find('lasttime').text
             d1['目的IP'] = a.find('dip').text
             # d1['signation_state'] = check_domain_status(d1['domain'])
-            l1.append(d1)
-            # print(counter)
 
-            # 进度条
+            d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
+            for d_ip in d1['解析IP']:
+                for c_ip in d2:
+                    if d_ip in d2[c_ip]:
+                        d1['所属客户'] = c_ip
+
+            # 处理完的数据字典加入列表 [{}, {}, {}]
+            l1.append(d1)
+
+            # 进度条更新完成度
             per = int((counter / table_length) * 100)  # 当前 已完成 百分比
-            linetmpla = "{:%s<%s} {:<2}" % (backsymbol, 33)  # 格式化打印 美化
-            print('\r' + linetmpla.format(frontsymbol * int(per / 3), per) + '%', end='')
+            linetmpla = "{:%s<%s} {:>3}" % (none_sign, 33)  # 格式化打印 美化
+            print('\r' + linetmpla.format(done_sign * int(per / 3), per) + '%', end='')
 
         # 导出至excel
         asdf = pandas.DataFrame(l1)
         asdf.to_excel('domain_{}.xlsx'.format(state),  # 文件名
                       sheet_name='{}记录查询'.format(state),  # sheet名
                       index=False,  # 不显示在第一列的索引号（序号）
-                      columns=['计数', '解析IP', '域名', '最后访问页', '备案号', '单位', '最后访问时间', '系统ID', '目的IP']  # 列排序（实际作用是指定输出哪几列）
+                      columns=['所属客户', '解析IP', '域名', '最后访问页', '备案号', '单位', '最后访问时间', '系统ID', '目的IP', '计数']  # 列排序（实际作用是指定输出哪几列）
                       )
 
         print('\n')
-        print('已导出{}条数据,文件路径E:\\123\\domain_{}.xlsx'.format(counter, state))
+        print('已导出{}条数据,文件路径E:\\123\\domain_{}.xlsx'.format(counter, state), '\n')
         # time.sleep(0.5)
         # print('表中显示为 未备案 的项，由于查询网站原因，不一定准确，务必手动复查', '\n')
         return
@@ -282,7 +301,7 @@ if __name__ == '__main__':
                 print('状态输入错误', '\n')
                 continue
             output(pay, status)
-            print('\n')
+            # print('\n')
         except KeyboardInterrupt:
             break
         except Exception as ex:
