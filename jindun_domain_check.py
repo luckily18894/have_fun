@@ -5,9 +5,13 @@ import pandas
 import re
 import math
 import time
+import json
 import requests
+import dns.resolver
+import ipaddress
 import urllib3
 from bs4 import BeautifulSoup
+
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
@@ -71,6 +75,24 @@ def get_soup(header, url, parameters=None, data=None, jsons=None, cookie=None):
     return comment_soup
 
 
+def get_domain_ip(domain):
+    ips_list = []
+    try:
+        a_type = dns.resolver.query(domain, 'A')
+        for i in a_type.response.answer:
+            for j in i.items:
+                # print(domain, type(j))
+                if type(j) == dns.rdtypes.IN.A.A:
+                    ips_list.append(j.address)
+        return ips_list
+    except dns.resolver.NXDOMAIN:
+        return '无解析'
+    except dns.resolver.NoAnswer:
+        return '无解析'
+    except Exception as e:
+        print(e)
+
+
 # 统计信息  已备案 xx  未备案 xx  待查询 xx
 def get_count(check_code):
     count_head = {'Host': '124.160.57.2:28099',
@@ -89,12 +111,13 @@ def get_count(check_code):
     soup = get_soup(count_head, main_page_url, parameters=total_para)
     count = re.findall('"(.*)"', soup.find_all('script')[10].text.strip().split(':')[7])
 
-    # 返回结果  （'已备案 xxx', '未备案 xxx', '待查询 xxx'）
-    return count[0], count[1], count[2]
+    # 返回结果  count = ['已备案 xxx', '未备案 xxx', '待查询 xxx', 'chart']
+    print('{}条，{}条，{}条'.format(count[0], count[1], count[2]), '\n')
+    return
 
 
 # 取得记录的页数
-def get_page_number(check_code):
+def get_page_number(check_code, status_code):
     page_number_head = {'Host': '124.160.57.2:28099',
                         'Origin': 'https://124.160.57.2:28099',
                         'Accept': 'application/json, text/javascript, */*; q=0.01',
@@ -111,26 +134,19 @@ def get_page_number(check_code):
     get_number_para = 'q=webbeian/gettotal/pagetype/domain'
 
     # 取得  0待查询 1已备案 2未备案  的个数
-    for state_number in range(0, 3):
-        count_data = 'gettotal_paget=%3Fq%3Dwebbeian%2Fgettotal%2Fpagetype%2Fdomain&domain=&matching=1&status=' + str(state_number) + '&bytime=&userid=&serviceid='
-        soup = get_soup(page_number_head, get_number_url, parameters=get_number_para, data=count_data)
+    count_data = 'gettotal_paget=%3Fq%3Dwebbeian%2Fgettotal%2Fpagetype%2Fdomain&domain=&matching=1&status=' + status_code + '&bytime=&userid=&serviceid='
 
-        # 获取的总条目数 / 每页默认显示18条 = 页数（向上取整）
-        if state_number == 0:
-            unknown_page_number = math.ceil(int(soup.text) / 18)
-        elif state_number == 1:
-            signed_page_number = math.ceil(int(soup.text) / 18)
-        elif state_number == 2:
-            unsigned_page_number = math.ceil(int(soup.text) / 18)
+    soup = get_soup(page_number_head, get_number_url, parameters=get_number_para, data=count_data)
+    # 获取的总条目数 / 每页默认显示18条 = 页数（向上取整）
+    page_number = math.ceil(int(soup.text) / 18)
 
-    # print('已备案域名：{}页，未备案域名：{}页，未知域名：{}页'.format(signed_page_number, unsigned_page_number, unknown_page_number))
-    return signed_page_number, unsigned_page_number, unknown_page_number
+    return page_number, soup.text
 
 
-#  核心 未完工！！！
-def out_put(check_code):
+#  核心 已完成一级域名导出，主机和目的IP待加入
+def out_put(check_code, status):
     out_put_head = {'Host': '124.160.57.2:28099',
-                    # 'Upgrade-Insecure-Requests': '1',
+                    'Upgrade-Insecure-Requests': '1',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
                     'Accept-Encoding': 'gzip, deflate, br',
                     'Accept-Language': 'zh-CN,zh;q=0.9',
@@ -139,87 +155,204 @@ def out_put(check_code):
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36',
                     'X-Requested-With': 'XMLHttpRequest'
                     }
-    # 未备案
-    unsigned_url = 'https://124.160.57.2:28099/?q=webbeian/index/status/2/menuid/2'
-    unsigned_para = 'q=webbeian/index/status/2/menuid/2'
-    soup = get_soup(out_put_head, unsigned_url, parameters=unsigned_para)
+    status_dict = {'已备案': '1', '未备案': '2', '待查询': '0'}
+    status_code = status_dict[status]
 
-    for tr in soup.find_all('tr')[1:]:
-        print(list(filter(None, tr.text.strip().split('\n')))[:4])  # 剔除空值 ''
+    page_number, table_length = get_page_number(check_code, status_code)
+
+    # 若没有数据 返回 无结果
+    if table_length == '0':
+        print('无结果', '\n')
+        return
+
+    final_list = []
+    counter = 0
+    print('共{}条数据，查询并导出中，请稍等.....'.format(table_length))
+
+    # 客户ip字典
+    c_dict = {'顺网': ['115.231.111.96/27', '124.90.38.96/27', '61.130.11.192/27', '115.231.111.64/27', '124.90.38.64/27',
+                     '183.131.14.0/24', '124.90.37.32/27', '115.236.57.64/27', '183.136.238.192/26', '183.136.238.0/26',
+                     '101.71.23.128/26', '115.236.57.192/28', '122.224.178.82', '122.224.178.83', '122.224.178.84',
+                     '122.224.178.85', '122.224.178.86', '122.224.178.66', '122.224.178.67', '122.224.178.68',
+                     '122.224.178.69', '122.224.178.70', '122.224.178.71', '122.224.178.72', '122.224.178.73',
+                     '122.224.178.74', '122.224.178.75', '122.224.178.76', '122.224.178.77', '122.224.178.78',
+                     '122.224.178.79', '122.224.178.80', '122.224.178.81', '115.236.57.224/28', '115.236.57.240/29',
+                     '115.236.57.217', '115.236.57.218', '115.236.57.219', '115.236.57.220', '115.236.57.221',
+                     '115.236.57.222', '115.236.57.223', '115.236.57.248', '112.13.94.160/28', '121.52.242.80/28',
+                     '115.236.57.0/26', '183.131.182.8/29', '121.52.242.96/27', '121.52.247.160/27',
+                     '122.224.114.128/26', '122.224.199.224/27', '122.224.178.106', '122.224.178.107',
+                     '122.224.178.108', '122.224.178.109', '122.224.178.110', '122.224.178.111', '122.224.178.112',
+                     '122.224.178.113', '122.224.178.114', '122.224.178.115', '122.224.178.116', '122.224.178.124',
+                     '122.224.178.125'],
+              '浮云': ['115.231.111.0/26', '183.134.105.0/25', '115.233.214.0/24', '124.160.112.0/26', '124.90.37.128/25',
+                     '124.90.36.0/24', '115.236.4.192/28'],
+              '思华': ['115.231.111.128/25', '183.131.20.64/27', '124.90.38.0/26', '223.93.140.32/27', '112.13.94.128/27',
+                     '218.108.65.64/28', '115.233.223.26', '115.233.223.27', '115.233.223.28', '115.233.223.29',
+                     '115.233.223.30'],
+              '华通': ['115.236.72.0/28', '115.236.72.16/28', '223.93.148.192/26', '223.93.148.128/28', '112.13.94.0/25',
+                     '124.90.37.0/28', '115.236.75.240/28', '115.236.75.224/28', '121.52.247.128/27', '121.52.246.0/24',
+                     '101.251.146.0/25', '115.231.18.224/28', '124.160.116.32/28', '124.160.124.0/28'],
+              '拓镜': ['60.190.245.16/28'],
+              '召唤': ['122.224.178.2', '122.224.178.3', '122.224.178.6', '122.224.178.29', '122.224.178.30',
+                     '122.224.178.31', '122.224.178.32', '122.224.178.33', '122.224.178.34', '122.224.178.35',
+                     '122.224.178.36', '122.224.178.37', '122.224.178.38', '122.224.178.39', '122.224.178.40',
+                     '122.224.178.41', '122.224.178.42', '122.224.178.51', '122.224.178.52', '122.224.178.53',
+                     '122.224.178.54', '122.224.178.62', '122.224.178.63', '122.224.178.64', '122.224.178.65',
+                     '122.224.178.101'],
+              '齐顺': ['122.224.178.4', '122.224.178.5', '122.224.178.99', '122.224.178.103', '122.224.178.104',
+                     '122.224.178.105', '122.224.178.117', '122.224.178.118', '122.224.178.119', '122.224.178.120',
+                     '122.224.178.121', '122.224.178.122', '122.224.178.123', '124.160.238.111', '124.160.238.112',
+                     '124.160.238.113', '124.160.238.114', '124.160.238.115', '124.160.238.116', '124.160.238.117',
+                     '124.160.238.118', '124.160.238.119', '124.160.238.120', '124.160.238.121', '124.160.238.122',
+                     '124.160.238.123'],
+              '搜视': ['115.236.57.160/28', '121.52.242.64/28'],
+              '彩虹庄': ['122.224.199.224/27', '124.160.238.96/27'],
+              '老外测试': ['218.108.65.240/28'],
+              }
+    # 网段转换成单个地址的列表
+    d2 = {}
+    for custm in c_dict:
+        ip_list = []
+        for ips in c_dict[custm]:
+            for ip in ipaddress.ip_network(ips):
+                ip_list.append(str(ip))
+        d2.update({custm: ip_list})
+
+    # 进度条 0%
+    done_sign, none_sign = '>', '_'
+    print("{:<33} {:>3}".format(none_sign * 33, 0) + '%', end='')
+
+    for page in range(page_number):
+        page += 1  # 从0开始，下边缘不算，所以需要先 +1
+
+        # 跳转至x页
+        url = 'https://124.160.57.2:28099/?q=webbeian/index/status/' + status_code + '/bytime/0/page/' + str(
+            page) + '/pagesize/18/ajax/1'
+        para = 'q=webbeian/index/status/' + status_code + '/bytime/0/page/' + str(page) + '/pagesize/18/ajax/1'
+
+        comm = get_soup(out_put_head, url, parameters=para)
+
+        # 对返回的数据js化 并转换成html 方便处理
+        o = BeautifulSoup(json.loads(comm.find_all('p')[0].text)[1], 'lxml')
+
+        # 第一条是在<p>中 所以需要单独处理一次
+        # -------------------------<p>--------------------------------开始
+        each_domain_list = o.find('p').text.split('\n', 7)[:6]
+        counter += 1
+        d1 = {'备案号': ''}  # 初始化时 先创建 '备案号' 项
+        d1['计数'] = str(counter)
+        d1['域名'] = each_domain_list[0].strip()
+        # d1['最后访问页'] = a.find('lastpage').text
+        d1['解析IP'] = get_domain_ip(d1['域名'])
+        d1['备案号'] = each_domain_list[3].strip()
+        d1['查询时间'] = each_domain_list[4].strip()
+        d1['最后更新时间'] = each_domain_list[5].strip()
+        # d1['目的IP'] = a.find('dip').text
+
+        d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
+        for d_ip in d1['解析IP']:
+            for c_ip in d2:
+                if d_ip in d2[c_ip]:
+                    d1['所属客户'] = c_ip
+
+        # 处理完的数据字典加入列表 [{}, {}, {}]
+        final_list.append(d1)
+        # -------------------------<p>--------------------------------结束
+
+        # 其余的数据都在<tr>中 按正常操作即可
+        for td in o.find_all('tr'):
+            each_domain_list = td.text.strip().split('\n')[:6]
+
+            d1 = {'备案号': ''}  # 初始化时 先创建 '备案号' 项
+
+            counter += 1
+            d1['计数'] = str(counter)
+            d1['域名'] = each_domain_list[0]
+            # d1['最后访问页'] = a.find('lastpage').text
+            d1['解析IP'] = get_domain_ip(d1['域名'])
+            d1['备案号'] = each_domain_list[3]
+            d1['查询时间'] = each_domain_list[4]
+            d1['最后更新时间'] = each_domain_list[5]
+            # d1['目的IP'] = a.find('dip').text
+
+            d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
+            for d_ip in d1['解析IP']:
+                for c_ip in d2:
+                    if d_ip in d2[c_ip]:
+                        d1['所属客户'] = c_ip
+
+            # 处理完的数据字典加入列表 [{}, {}, {}]
+            final_list.append(d1)
+
+            # 进度条更新完成度
+            per = int((counter / int(table_length)) * 100)  # 当前 已完成 百分比
+            linetmpla = "{:%s<%s} {:>3}" % (none_sign, 33)  # 格式化打印 美化
+            print('\r' + linetmpla.format(done_sign * int(per / 3), per) + '%', end='')
+
+    # 导出至excel
+    asdf = pandas.DataFrame(final_list)
+    asdf.to_excel('E:\\123\\jindun_domain_{}.xlsx'.format(status),  # 文件名
+                  sheet_name='{}记录查询'.format(status),  # sheet名
+                  index=False,  # 不显示在第一列的索引号（序号）
+                  # columns=['所属客户', '解析IP', '域名', '最后访问页', '备案号', '单位', '最后访问时间', '系统ID', '目的IP', '计数']  # 列排序（实际作用是指定输出哪几列）
+                  columns=['所属客户', '解析IP', '域名', '备案号', '查询时间', '最后更新时间', '计数']
+                  )
+
+    print('\n')
+    print('已导出{}条数据,文件路径E:\\123\\jindun_domain_{}.xlsx'.format(counter, status), '\n')
+    return
 
 
-# 施工区！！！！
 if __name__ == '__main__':
-    import pprint
-    import json
-
-    time_start = time.time()
+    # time_start = time.time()
 
     check_code = login_to_system()  # 获得登录id号  必须！！！！
     # print(check_code)
 
-    head = {'Host': '124.160.57.2:28099',
-            'Upgrade-Insecure-Requests': '1',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Accept-Language': 'zh-CN,zh;q=0.9',
-            'Cookie': 'PHPSESSID=7d3aecb7edc128d327c336ff3e3a43e1; ' + check_code,
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36',
-            'X-Requested-With': 'XMLHttpRequest'
-            }
-
-    page_number = '1'
-    status_code = '1'  # 0待查询 1已备案 2未备案
-
-    # 跳转至x页 通用   返回的是json？？？ 要json.loads？？？？
-    url = 'https://124.160.57.2:28099/?q=webbeian/index/status/' + status_code + '/bytime/0/page/' + page_number + '/pagesize/18/ajax/1'
-    para = 'q=webbeian/index/status/' + status_code + '/bytime/0/page/' + page_number + '/pagesize/18/ajax/1'
-
-    comm = get_soup(head, url, parameters=para)
-    # print(comm._content)
-    # 已测试 需读取原始返回数据（b'xxx'）才能转成js 正常显示type=str，  接下来：读取正常soup能否转js？？？ js能否再转回html作分析
-    # ss = json.loads(comm._content)[1]
-    # print(type(ss))
-
-    ss = json.loads(comm.find_all('p')[0].text)[1]
-    print(ss)
-
-    # for a in comm.find_all('tbody', id="content_list"):
-    # v = re.compile('<tr>.*<.*/tr>')
-    # print(comm.get_text())
-    # asdf = v.findall(comm.get_text())[0]
-    # qwer = BeautifulSoup(asdf, 'lxml')
-    # print(len(qwer.find_all('td')))
-
-    # for td in comm.find_all('tr')[0].find_all('td'):
-    #     print(td.text.split('\n'))
-
-    # print(comm.find_all('tr')[0].text.split('\\n'))
-
-    # for a in comm.find_all('tr'):
-    #     print(list(filter(None, a.text.strip().split('\n'))))
-
     # print(get_count(check_code))
-    # print(get_page_number(check_code))
-    # out_put(check_code)  # 0.255
+    # print(get_page_number(check_code, '未备案'))
+    # out_put(check_code , '已备案')  # 0.255
 
-    time_end = time.time()
-    print('totally cost:', time_end - time_start)
+    print('''操作说明：
+        已备案 ----- 查询所有 已备案 记录 并导出至excel
+        未备案 ----- 查询所有 未备案 记录 并导出至excel
+        待查询 ----- 查询所有 待查询 记录 并导出至excel
+        统计 ------- 查询 已备案 未备案 待查询 条目总数
+回车立即生效，无确认项！！！''', '\n')
 
+    while True:
+        try:
+            status = input('请输入操作：')
+            if status == 'exit':
+                break
+            elif status == '':
+                continue
+            elif status == '统计':
+                get_count(check_code)
+                continue
+            elif status == '已备案' or status == '未备案' or status == '待查询':
+                out_put(check_code, status)
+                continue
+            # elif status == '清空':
+            #     pay = data_dict['clear']
+            #     clear_all_record(pay)
+            #     continue
+            # elif status == '重启':
+            #     pay = data_dict['reboot']
+            #     reboot_system(pay)
+            #     continue
+            else:
+                print('状态输入错误', '\n')
+                continue
+            # print('\n')
+        except KeyboardInterrupt:
+            break
+        except Exception as ex:
+            print(ex)
+            continue
 
+    # time_end = time.time()
+    # print('totally cost:', time_end - time_start)
 
-
-    # 已备案 多页
-    # url1 = 'https://124.160.57.2:28099/?q=webbeian/index/status/1/menuid/1'
-    # para1 = 'q=webbeian/index/status/1/menuid/1'
-    #
-    # url2 = 'https://124.160.57.2:28099/?q=webbeian/index/status/1/page/2/total/0/pagesize/18/ajax/1'
-    # para2 = 'q=webbeian/index/status/1/page/2/total/0/pagesize/18/ajax/1'
-    # data2 = 'gettotal_paget=%3Fq%3Dwebbeian%2Fgettotal%2Fpagetype%2Fdomain&domain=&matching=1&status=1&bytime=&userid=&serviceid='
-    #
-    # url3 = 'https://124.160.57.2:28099/?q=webbeian/index/status/1/bytime/0/page/' + page_number + '/total/0/pagesize/18/ajax/1'
-    # para3 = 'q=webbeian/index/status/1/bytime/0/page/' + page_number + '/total/0/pagesize/18/ajax/1'
-    # data3 = 'gettotal_paget=%3Fq%3Dwebbeian%2Fgettotal%2Fpagetype%2Fdomain&domain=&matching=1&status=1&bytime=&userid=&serviceid='
 
 
