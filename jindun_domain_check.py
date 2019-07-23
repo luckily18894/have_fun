@@ -88,15 +88,16 @@ def get_domain_ip(dl):
                     # print(each_domain, type(j))
                     if type(j) == dns.rdtypes.IN.A.A:
                         ips_list.append(j.address)
-            # 返回所有解析地址
-            return list(set(ips_list))
         except dns.resolver.NXDOMAIN:
-            return '无解析'
+            pass
         except dns.resolver.NoAnswer:
-            return '无解析'
+            pass
         except Exception as e:
             print(e)
-            return
+            pass
+
+    # 返回所有解析地址
+    return ' | '.join(list(set(ips_list))) if ips_list != [] else '无解析'
 
 
 # 统计信息  已备案 xx  未备案 xx  待查询 xx
@@ -165,7 +166,8 @@ def get_second_domain(check_code, domain_name):
     data = 'gettotal_paget=%3Fq%3Dwebbeianevent%2Fgettotal%2Fpagetype%2Fdomain%2Fhttps%2F1&https=1&domain=' + domain_name + '&matching=1&ipv=&site_user=&bytime=&userid=&serviceid='
     soupp = get_soup(second_domain_head, url, parameters=para, data=data)
 
-    if len(json.loads(soupp.find_all('p')[0].text)) == 3:  # 判断该页是否有数据， 1 无  3 有
+    # if len(json.loads(soupp.find_all('p')[0].text)) = 3:  # 判断该页是否有数据， 1 无  3 有
+    if json.loads(soupp.find_all('p')[0].text)[2] != 0:
 
         dl, il = [], []  # domain_list, ip_list
 
@@ -179,7 +181,7 @@ def get_second_domain(check_code, domain_name):
         il.append(each_second_domain_list[1].strip())
         # ---------------------------------<p>---------------------------------------结束
 
-        # 剩下的都在<tr>内，正操操作即可
+        # 剩下的都在<tr>内，正常操作即可
         for tr in second_domain.find_all('tr'):
             each_second_domain_list = tr.text.strip().split('\n')[:7]  # 0 domain 1 IP 4 ICP 5 check_time 6 update_time
             dl.append(each_second_domain_list[0].strip())
@@ -291,20 +293,26 @@ def out_put(check_code, status):
         d1['计数'] = str(counter)
         d1['域名'] = each_domain_list[0].strip()
         d1['备案号'] = each_domain_list[3].strip()
-        d1['查询时间'] = each_domain_list[4].strip()
+        d1['最后查询时间'] = each_domain_list[4].strip()
         d1['最后更新时间'] = each_domain_list[5].strip()
+        d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
 
         dl, il = get_second_domain(check_code, d1['域名'])
-        d1['目的IP'] = il
-        d1['最后访问页'] = dl
-        d1['解析IP'] = get_domain_ip(d1['域名']) if dl == '无解析' else get_domain_ip(dl)
 
+        if dl == '无记录':  # 系统内无解析记录 就手动解析域名
+            d1['解析IP'] = get_domain_ip(d1['域名'].split())
+            d1['目的IP'] = il
+            d1['最后访问页'] = dl
+        else:  # 系统内有解析记录 就手动解析每一个主机记录
+            d1['解析IP'] = get_domain_ip(dl)
+            d1['目的IP'] = ' | '.join(il)
+            d1['最后访问页'] = ' | '.join(dl)
 
-        d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
-        for d_ip in d1['解析IP']:
-            for c_ip in d2:
-                if d_ip in d2[c_ip]:
-                    d1['所属客户'] = c_ip
+        if d1['解析IP'] != '无解析':  # 有解析 就查找是否在机房内
+            for d_ip in d1['解析IP'].split(' | '):
+                for c_ip in d2:
+                    if d_ip in d2[c_ip]:
+                        d1['所属客户'] = c_ip
 
         # 处理完的数据字典加入列表 [{}, {}, {}]
         final_list.append(d1)
@@ -323,19 +331,26 @@ def out_put(check_code, status):
             d1['计数'] = str(counter)
             d1['域名'] = each_domain_list[0].strip()
             d1['备案号'] = each_domain_list[3].strip()
-            d1['查询时间'] = each_domain_list[4].strip()
+            d1['最后查询时间'] = each_domain_list[4].strip()
             d1['最后更新时间'] = each_domain_list[5].strip()
+            d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
 
             dl, il = get_second_domain(check_code, d1['域名'])
-            d1['目的IP'] = il
-            d1['解析IP'] = get_domain_ip(dl)
-            d1['最后访问页'] = dl
 
-            d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
-            for d_ip in d1['解析IP']:
-                for c_ip in d2:
-                    if d_ip in d2[c_ip]:
-                        d1['所属客户'] = c_ip
+            if dl == '无记录':  # 系统内无解析记录 就手动解析域名
+                d1['解析IP'] = get_domain_ip(d1['域名'].split())
+                d1['目的IP'] = il
+                d1['最后访问页'] = dl
+            else:  # 系统内有解析记录 就手动解析每一个主机记录
+                d1['解析IP'] = get_domain_ip(dl)
+                d1['目的IP'] = ' | '.join(il)
+                d1['最后访问页'] = ' | '.join(dl)
+
+            if d1['解析IP'] != '无解析':  # 有解析 就查找是否在机房内
+                for d_ip in d1['解析IP'].split(' | '):
+                    for c_ip in d2:
+                        if d_ip in d2[c_ip]:
+                            d1['所属客户'] = c_ip
 
             # 处理完的数据字典加入列表 [{}, {}, {}]
             final_list.append(d1)
@@ -350,8 +365,7 @@ def out_put(check_code, status):
     asdf.to_excel('jindun_domain_{}.xlsx'.format(status),  # 文件名
                   sheet_name='{}记录查询'.format(status),  # sheet名
                   index=False,  # 不显示在第一列的索引号（序号）
-                  columns=['所属客户', '解析IP', '域名', '最后访问页', '备案号', '单位', '最后访问时间', '系统ID', '目的IP', '计数']  # 列排序（实际作用是指定输出哪几列）
-                  # columns=['所属客户', '解析IP', '域名', '备案号', '查询时间', '最后更新时间', '计数']
+                  columns=['所属客户', '解析IP', '域名', '最后访问页', '备案号', '最后查询时间', '最后更新时间', '目的IP', '计数']  # 列排序（实际作用是指定输出哪几列）
                   )
 
     print('\n')
@@ -359,45 +373,45 @@ def out_put(check_code, status):
     return
 
 
-# if __name__ == '__main__':
-#     check_code = login_to_system()  # 获得登录id号  必须！！！！
-#
-#     print('''操作说明：
-#         已备案 ----- 查询所有 已备案 记录 并导出至excel
-#         未备案 ----- 查询所有 未备案 记录 并导出至excel
-#         待查询 ----- 查询所有 待查询 记录 并导出至excel
-#         统计 ------- 查询 已备案 未备案 待查询 条目总数
-# 回车立即生效，无确认项！！！''', '\n')
-#
-#     while True:
-#         try:
-#             status = input('请输入操作：')
-#             if status == 'exit':
-#                 break
-#             elif status == '':
-#                 continue
-#             elif status == '统计':
-#                 get_count(check_code)
-#                 continue
-#             elif status == '已备案' or status == '未备案' or status == '待查询':
-#                 out_put(check_code, status)
-#                 continue
-#             # elif status == '清空':
-#             #     pay = data_dict['clear']
-#             #     clear_all_record(pay)
-#             #     continue
-#             # elif status == '重启':
-#             #     pay = data_dict['reboot']
-#             #     reboot_system(pay)
-#             #     continue
-#             else:
-#                 print('状态输入错误', '\n')
-#                 continue
-#         except KeyboardInterrupt:
-#             break
-#         except Exception as ex:
-#             print(ex)
-#             continue
+if __name__ == '__main__':
+    check_code = login_to_system()  # 获得登录id号  必须！！！！
+
+    print('''操作说明：
+        已备案 ----- 查询所有 已备案 记录 并导出至excel
+        未备案 ----- 查询所有 未备案 记录 并导出至excel
+        待查询 ----- 查询所有 待查询 记录 并导出至excel
+        统计 ------- 查询 已备案 未备案 待查询 条目总数
+回车立即生效，无确认项！！！''', '\n')
+
+    while True:
+        try:
+            status = input('请输入操作：')
+            if status == 'exit':
+                break
+            elif status == '':
+                continue
+            elif status == '统计':
+                get_count(check_code)
+                continue
+            elif status == '已备案' or status == '未备案' or status == '待查询':
+                out_put(check_code, status)
+                continue
+            # elif status == '清空':
+            #     pay = data_dict['clear']
+            #     clear_all_record(pay)
+            #     continue
+            # elif status == '重启':
+            #     pay = data_dict['reboot']
+            #     reboot_system(pay)
+            #     continue
+            else:
+                print('状态输入错误', '\n')
+                continue
+        except KeyboardInterrupt:
+            break
+        except Exception as ex:
+            print(ex)
+            continue
 
 
 # 施工测试区！！！
@@ -409,8 +423,9 @@ if __name__ == '__main__':
     #
     # print(get_count(check_code))
     # print(get_page_number(check_code, '未备案'))
-    out_put(check_code, '未备案')  # 0.255
-    # print(get_second_domain(check_code, 'sanji123.com'))
+    # out_put(check_code, '未备案')  # 0.255
+    # print(get_second_domain(check_code, 'testfire.net'))
+    print(get_domain_ip(['google-analytics.com']))
 
     time_end = time.time()
     print('totally cost:', time_end - time_start)  # 计时
