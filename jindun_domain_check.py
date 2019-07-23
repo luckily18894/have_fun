@@ -75,22 +75,28 @@ def get_soup(header, url, parameters=None, data=None, jsons=None, cookie=None):
     return comment_soup
 
 
-def get_domain_ip(domain):
+# 获得域名的解析地址
+def get_domain_ip(dl):
     ips_list = []
-    try:
-        a_type = dns.resolver.query(domain, 'A')
-        for i in a_type.response.answer:
-            for j in i.items:
-                # print(domain, type(j))
-                if type(j) == dns.rdtypes.IN.A.A:
-                    ips_list.append(j.address)
-        return ips_list
-    except dns.resolver.NXDOMAIN:
-        return '无解析'
-    except dns.resolver.NoAnswer:
-        return '无解析'
-    except Exception as e:
-        print(e)
+
+    # 传来的是域名的列表，对每一个域名进行解析
+    for each_domain in dl:
+        try:
+            a_type = dns.resolver.query(each_domain, 'A')
+            for i in a_type.response.answer:
+                for j in i.items:
+                    # print(each_domain, type(j))
+                    if type(j) == dns.rdtypes.IN.A.A:
+                        ips_list.append(j.address)
+            # 返回所有解析地址
+            return list(set(ips_list))
+        except dns.resolver.NXDOMAIN:
+            return '无解析'
+        except dns.resolver.NoAnswer:
+            return '无解析'
+        except Exception as e:
+            print(e)
+            return
 
 
 # 统计信息  已备案 xx  未备案 xx  待查询 xx
@@ -143,7 +149,49 @@ def get_page_number(check_code, status_code):
     return page_number, soup.text
 
 
-#  核心 已完成一级域名导出，主机和目的IP待加入
+# 得到 二级域名列表 和 目的地址列表  (只查找第一页！！！！)
+def get_second_domain(check_code, domain_name):
+    second_domain_head = {'Host': '124.160.57.2:28099',
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.90 Safari/537.36',
+                          'Accept': 'application/json, text/javascript, */*; q=0.01',
+                          'Accept-Encoding': 'gzip, deflate, br',
+                          'Accept-Language': 'zh-CN,zh;q=0.9',
+                          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                          'Cookie': 'PHPSESSID=7d3aecb7edc128d327c336ff3e3a43e1; ' + check_code,
+                          'X-Requested-With': 'XMLHttpRequest'
+                          }
+    url = 'https://124.160.57.2:28099/index.php?q=webbeianevent/index/domain/' + domain_name + '/ishttps/1/bytime/0/page/1/total/0/pagesize/18/ajax/1'
+    para = 'q=webbeianevent/index/domain/' + domain_name + '/ishttps/1/bytime/0/page/1/total/0/pagesize/18/ajax/1'
+    data = 'gettotal_paget=%3Fq%3Dwebbeianevent%2Fgettotal%2Fpagetype%2Fdomain%2Fhttps%2F1&https=1&domain=' + domain_name + '&matching=1&ipv=&site_user=&bytime=&userid=&serviceid='
+    soupp = get_soup(second_domain_head, url, parameters=para, data=data)
+
+    if len(json.loads(soupp.find_all('p')[0].text)) == 3:  # 判断该页是否有数据， 1 无  3 有
+
+        dl, il = [], []  # domain_list, ip_list
+
+        # 返回的是json，需要json.loads取出内容
+        second_domain = BeautifulSoup(json.loads(soupp.find_all('p')[0].text)[1], 'lxml')
+
+        # 第一项在<p>内，所以需要单独做一次，和正常操作基本一样
+        # ---------------------------------<p>---------------------------------------开始
+        each_second_domain_list = second_domain.find('p').text.split('\n', 7)[:7]  # 0 domain 1 IP 4 ICP 5 check_time 6 update_time
+        dl.append(each_second_domain_list[0].strip())
+        il.append(each_second_domain_list[1].strip())
+        # ---------------------------------<p>---------------------------------------结束
+
+        # 剩下的都在<tr>内，正操操作即可
+        for tr in second_domain.find_all('tr'):
+            each_second_domain_list = tr.text.strip().split('\n')[:7]  # 0 domain 1 IP 4 ICP 5 check_time 6 update_time
+            dl.append(each_second_domain_list[0].strip())
+            il.append(each_second_domain_list[1].strip())
+
+        # 返回 域名列表 和 目的地址列表
+        return list(set(dl)), list(set(il))
+    else:
+        return '无记录', '无记录'
+
+
+#  核心 已完成一级域名导出，已加入 第一页 主机和目的IP   后几页有必要？？？？
 def out_put(check_code, status):
     out_put_head = {'Host': '124.160.57.2:28099',
                     'Upgrade-Insecure-Requests': '1',
@@ -222,32 +270,35 @@ def out_put(check_code, status):
     done_sign, none_sign = '>', '_'
     print("{:<33} {:>3}".format(none_sign * 33, 0) + '%', end='')
 
+    # 开始对每一页的数据进行处理
     for page in range(page_number):
         page += 1  # 从0开始，下边缘不算，所以需要先 +1
 
         # 跳转至x页
-        url = 'https://124.160.57.2:28099/?q=webbeian/index/status/' + status_code + '/bytime/0/page/' + str(
-            page) + '/pagesize/18/ajax/1'
-        para = 'q=webbeian/index/status/' + status_code + '/bytime/0/page/' + str(page) + '/pagesize/18/ajax/1'
+        x_page_url = 'https://124.160.57.2:28099/?q=webbeian/index/status/' + status_code + '/bytime/0/page/' + str(page) + '/pagesize/18/ajax/1'
+        x_page_para = 'q=webbeian/index/status/' + status_code + '/bytime/0/page/' + str(page) + '/pagesize/18/ajax/1'
 
-        comm = get_soup(out_put_head, url, parameters=para)
+        comm = get_soup(out_put_head, x_page_url, parameters=x_page_para)
 
         # 对返回的数据js化 并转换成html 方便处理
         o = BeautifulSoup(json.loads(comm.find_all('p')[0].text)[1], 'lxml')
 
-        # 第一条是在<p>中 所以需要单独处理一次
+        # 第一条是在<p>中 所以需要单独处理一次  和正常操作基本一样
         # -------------------------<p>--------------------------------开始
         each_domain_list = o.find('p').text.split('\n', 7)[:6]
         counter += 1
-        d1 = {'备案号': ''}  # 初始化时 先创建 '备案号' 项
+        d1 = {'备案号': ''}  # 初始化时 先创建 '备案号' 项  确保pandas能正常写入该条目
         d1['计数'] = str(counter)
         d1['域名'] = each_domain_list[0].strip()
-        # d1['最后访问页'] = a.find('lastpage').text
-        d1['解析IP'] = get_domain_ip(d1['域名'])
         d1['备案号'] = each_domain_list[3].strip()
         d1['查询时间'] = each_domain_list[4].strip()
         d1['最后更新时间'] = each_domain_list[5].strip()
-        # d1['目的IP'] = a.find('dip').text
+
+        dl, il = get_second_domain(check_code, d1['域名'])
+        d1['目的IP'] = il
+        d1['最后访问页'] = dl
+        d1['解析IP'] = get_domain_ip(d1['域名']) if dl == '无解析' else get_domain_ip(dl)
+
 
         d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
         for d_ip in d1['解析IP']:
@@ -257,23 +308,28 @@ def out_put(check_code, status):
 
         # 处理完的数据字典加入列表 [{}, {}, {}]
         final_list.append(d1)
+
+        # 进度条更新完成度
+        per = int((counter / int(table_length)) * 100)  # 当前 已完成 百分比
+        linetmpla = "{:%s<%s} {:>3}" % (none_sign, 33)  # 格式化打印 美化
+        print('\r' + linetmpla.format(done_sign * int(per / 3), per) + '%', end='')
         # -------------------------<p>--------------------------------结束
 
         # 其余的数据都在<tr>中 按正常操作即可
         for td in o.find_all('tr'):
             each_domain_list = td.text.strip().split('\n')[:6]
-
-            d1 = {'备案号': ''}  # 初始化时 先创建 '备案号' 项
-
             counter += 1
+            d1 = {'备案号': ''}  # 初始化时 先创建 '备案号' 项  确保pandas能正常写入该条目
             d1['计数'] = str(counter)
-            d1['域名'] = each_domain_list[0]
-            # d1['最后访问页'] = a.find('lastpage').text
-            d1['解析IP'] = get_domain_ip(d1['域名'])
-            d1['备案号'] = each_domain_list[3]
-            d1['查询时间'] = each_domain_list[4]
-            d1['最后更新时间'] = each_domain_list[5]
-            # d1['目的IP'] = a.find('dip').text
+            d1['域名'] = each_domain_list[0].strip()
+            d1['备案号'] = each_domain_list[3].strip()
+            d1['查询时间'] = each_domain_list[4].strip()
+            d1['最后更新时间'] = each_domain_list[5].strip()
+
+            dl, il = get_second_domain(check_code, d1['域名'])
+            d1['目的IP'] = il
+            d1['解析IP'] = get_domain_ip(dl)
+            d1['最后访问页'] = dl
 
             d1['所属客户'] = ''  # 先创建该键，确保没查到所属客户时 pandas也能写入该条目
             for d_ip in d1['解析IP']:
@@ -291,11 +347,11 @@ def out_put(check_code, status):
 
     # 导出至excel
     asdf = pandas.DataFrame(final_list)
-    asdf.to_excel('E:\\123\\jindun_domain_{}.xlsx'.format(status),  # 文件名
+    asdf.to_excel('jindun_domain_{}.xlsx'.format(status),  # 文件名
                   sheet_name='{}记录查询'.format(status),  # sheet名
                   index=False,  # 不显示在第一列的索引号（序号）
-                  # columns=['所属客户', '解析IP', '域名', '最后访问页', '备案号', '单位', '最后访问时间', '系统ID', '目的IP', '计数']  # 列排序（实际作用是指定输出哪几列）
-                  columns=['所属客户', '解析IP', '域名', '备案号', '查询时间', '最后更新时间', '计数']
+                  columns=['所属客户', '解析IP', '域名', '最后访问页', '备案号', '单位', '最后访问时间', '系统ID', '目的IP', '计数']  # 列排序（实际作用是指定输出哪几列）
+                  # columns=['所属客户', '解析IP', '域名', '备案号', '查询时间', '最后更新时间', '计数']
                   )
 
     print('\n')
@@ -303,56 +359,60 @@ def out_put(check_code, status):
     return
 
 
+# if __name__ == '__main__':
+#     check_code = login_to_system()  # 获得登录id号  必须！！！！
+#
+#     print('''操作说明：
+#         已备案 ----- 查询所有 已备案 记录 并导出至excel
+#         未备案 ----- 查询所有 未备案 记录 并导出至excel
+#         待查询 ----- 查询所有 待查询 记录 并导出至excel
+#         统计 ------- 查询 已备案 未备案 待查询 条目总数
+# 回车立即生效，无确认项！！！''', '\n')
+#
+#     while True:
+#         try:
+#             status = input('请输入操作：')
+#             if status == 'exit':
+#                 break
+#             elif status == '':
+#                 continue
+#             elif status == '统计':
+#                 get_count(check_code)
+#                 continue
+#             elif status == '已备案' or status == '未备案' or status == '待查询':
+#                 out_put(check_code, status)
+#                 continue
+#             # elif status == '清空':
+#             #     pay = data_dict['clear']
+#             #     clear_all_record(pay)
+#             #     continue
+#             # elif status == '重启':
+#             #     pay = data_dict['reboot']
+#             #     reboot_system(pay)
+#             #     continue
+#             else:
+#                 print('状态输入错误', '\n')
+#                 continue
+#         except KeyboardInterrupt:
+#             break
+#         except Exception as ex:
+#             print(ex)
+#             continue
+
+
+# 施工测试区！！！
 if __name__ == '__main__':
-    # time_start = time.time()
+    time_start = time.time()
 
     check_code = login_to_system()  # 获得登录id号  必须！！！！
     # print(check_code)
-
+    #
     # print(get_count(check_code))
     # print(get_page_number(check_code, '未备案'))
-    # out_put(check_code , '已备案')  # 0.255
+    out_put(check_code, '未备案')  # 0.255
+    # print(get_second_domain(check_code, 'sanji123.com'))
 
-    print('''操作说明：
-        已备案 ----- 查询所有 已备案 记录 并导出至excel
-        未备案 ----- 查询所有 未备案 记录 并导出至excel
-        待查询 ----- 查询所有 待查询 记录 并导出至excel
-        统计 ------- 查询 已备案 未备案 待查询 条目总数
-回车立即生效，无确认项！！！''', '\n')
-
-    while True:
-        try:
-            status = input('请输入操作：')
-            if status == 'exit':
-                break
-            elif status == '':
-                continue
-            elif status == '统计':
-                get_count(check_code)
-                continue
-            elif status == '已备案' or status == '未备案' or status == '待查询':
-                out_put(check_code, status)
-                continue
-            # elif status == '清空':
-            #     pay = data_dict['clear']
-            #     clear_all_record(pay)
-            #     continue
-            # elif status == '重启':
-            #     pay = data_dict['reboot']
-            #     reboot_system(pay)
-            #     continue
-            else:
-                print('状态输入错误', '\n')
-                continue
-            # print('\n')
-        except KeyboardInterrupt:
-            break
-        except Exception as ex:
-            print(ex)
-            continue
-
-    # time_end = time.time()
-    # print('totally cost:', time_end - time_start)
-
+    time_end = time.time()
+    print('totally cost:', time_end - time_start)  # 计时
 
 
