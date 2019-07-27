@@ -40,7 +40,7 @@ def send_mail(mailserver, username, password, From, To, Cc, Subj, Main_Body, fil
         print('Falied recipients:', failed)  # 如果出现故障，打印故障原因！
         return
     else:
-        print('邮件已经成功发出！！！', files[-22:], '\n')  # 如果没有故障发生
+        print('邮件已经成功发出！！！', files[0][-22:], '\n')  # 如果没有故障发生
         return
 
 
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     the_year, the_month, the_day, yesterday = str(today.year), str(today.month), str(today.day), str(int(today.day) - 1)
     date_today = the_year + '.' + the_month + '.' + the_day
     date_yesterday = the_year + '.' + the_month + '.' + yesterday
-    
+
     print('''流程：
     白班 or 晚班 ---> 发送机房资料  是   否 ---> 发送
                 ↓       ↑         ↓
@@ -93,61 +93,71 @@ if __name__ == '__main__':
                   title,
                   '',
                   [daily_record])
+
+        # 倒计时
+        countdown = 3
+        while True:
+            if countdown > 0:
+                print('\r' + '将在{}秒后自动退出！！'.format(countdown), end='')  # \r 再打印 可以覆盖掉之前的
+                countdown -= 1
+                time.sleep(1)
+            else:
+                break
         break
 
-    # 发送机房资料
-    data1 = 'e:\\2019.2.26资料备份\\2019.6.27\\资料汇总\\06.机房资料\\机房资料\\' + the_year + '年\\红山机房资料-' + date_today + '.xlsx'
-    data2 = 'e:\\2019.2.26资料备份\\2019.6.27\\资料汇总\\06.机房资料\\机房资料\\' + the_year + '年\\红山机房资料-' + date_yesterday + '.xlsx'
-        
-    print('发送机房资料： 是   否', '\n')
-    while True:
-        ziliao = input('是否发送：')
-        
-        if ziliao == '是':
-            print('\n', '''机房资料的时间：
-        昨天 --- 与晚班日志时间一致，或其他需求
-        今天 --- 与白班日志时间一致，或其他需求''', '\n')
-            data_time = input('请输入：')
-            if data_time == '昨天':
-                title = '红山机房资料-' + date_yesterday
-                attachments = [data2]
-                print('\n')
-            elif data_time == '今天':
-                title = '红山机房资料-' + date_today
-                attachments = [data1]
-                print('\n')   
-            else:
-                print('\n', '什么东西？？重来', '\n')
-                continue
-            
-            send_mail('smtp.qq.com',
-                      '2426848309@qq.com',
-                      'rhrogewmkjtwdifg',
-                      '2426848309@qq.com',
-                      '526601799@qq.com',  # 收信人
-                      '',  # 抄送
-                      title,
-                      '',
-                      attachments)
-        
-            time.sleep(5)
-            break
-    
-        elif ziliao == '否':
-            print('任务结束！自动退出... ', '\n')
-            time.sleep(2)
-            break
-        
-        # title = the_date + '红山网运' + which_duty + '班值班日志'
-        # attachments = [daily_record]
-        # print('\n')
+    ## 发送机房资料
+    # data1 = 'e:\\2019.2.26资料备份\\2019.6.27\\资料汇总\\06.机房资料\\机房资料\\' + the_year + '年\\红山机房资料-' + date_today + '.xlsx'
+    # data2 = 'e:\\2019.2.26资料备份\\2019.6.27\\资料汇总\\06.机房资料\\机房资料\\' + the_year + '年\\红山机房资料-' + date_yesterday + '.xlsx'
 
-        elif ziliao == 'exit':
-            break
-        elif ziliao == '':
-            continue
-        else:
-            print('\n', '什么东西？？重来', '\n')
-            continue
+    # print('发送机房资料： 是   否', '\n')
+    # while True:
+    # ziliao = input('是否发送：')
+
+    # if ziliao == '是':
+    # print('\n', '''机房资料的时间：
+    # 昨天 --- 与晚班日志时间一致，或其他需求
+    # 今天 --- 与白班日志时间一致，或其他需求''', '\n')
+    # data_time = input('请输入：')
+    # if data_time == '昨天':
+    # title = '红山机房资料-' + date_yesterday
+    # attachments = [data2]
+    # print('\n')
+    # elif data_time == '今天':
+    # title = '红山机房资料-' + date_today
+    # attachments = [data1]
+    # print('\n')
+    # else:
+    # print('\n', '什么东西？？重来', '\n')
+    # continue
+
+    # send_mail('smtp.qq.com',
+    # '2426848309@qq.com',
+    # 'rhrogewmkjtwdifg',
+    # '2426848309@qq.com',
+    # '526601799@qq.com',  # 收信人
+    # '',  # 抄送
+    # title,
+    # '',
+    # attachments)
+
+    # time.sleep(5)
+    # break
+
+    # elif ziliao == '否':
+    # print('任务结束！自动退出... ', '\n')
+    # time.sleep(2)
+    # break
+
+    # title = the_date + '红山网运' + which_duty + '班值班日志'
+    # attachments = [daily_record]
+    # print('\n')
+
+    # elif ziliao == 'exit':
+    # break
+    # elif ziliao == '':
+    # continue
+    # else:
+    # print('\n', '什么东西？？重来', '\n')
+    # continue
 
 
