@@ -31,8 +31,9 @@ def send_record(data):
 
 
 def xunjian_timing(dict1, dict2):
-    # 获取当前时间对应的data  因为当前时间和data时间不一定一致,所以手动改成对应的时间
-    timeee = datetime.datetime.now().strftime('%H:') + '30'
+    # 获取当前时间对应的data  因为当前时间和data时间不一定一致,所以手动改成对应的时间  16点为00 所以要区分一下
+    now_hour = datetime.datetime.now().strftime('%H:')
+    timeee = now_hour + '00' if now_hour == '16:' else now_hour + '30'
     data_list1, data_list2 = dict1[timeee], dict2[timeee]
 
     # 将每个机房的温湿度赋值   room4 = [('21.9', '70.6'), ('', ''), ('', '')...] 有几个冷池就有几个组
@@ -40,7 +41,7 @@ def xunjian_timing(dict1, dict2):
     wl, zh, room2, room3 = floor1[0], floor1[1], floor1[2:5], floor1[5]
     floor2 = re.findall('(\d{2}\.\d)/(\d{2}\.\d)', data_list2)
     room4, k = floor2[0:6], floor2[6]
-    # print(zh, room4[2])
+    # print(zh, room4[2])  # 测试
 
     # 将各冷池的温湿度 填入 要发送的各data
     # [float, 'data'] 第0项是巡检该项目的用时（单位：min）  第1项是对应项目所需发送的data
@@ -80,8 +81,17 @@ def xunjian_timing(dict1, dict2):
                     k[0], k[1])],
     }
 
-    print('\n')
-    print('{} 开始巡检'.format(timeee))
+    # 模拟 可能 不是准时开始 延迟-20 - 90秒  负数就准时开始
+    time_sleep = random.randint(-20, 90)
+    while time_sleep > 0:
+        print('\r' + '将于{}秒 后开始...'.format(time_sleep), end='')  # \r 再打印 可以覆盖掉之前的
+        time_sleep -= 1
+        time.sleep(1)
+    else:
+        print('               ')  # 把之前的 延时倒计时 覆盖掉  变成空行  相当于\n
+
+    # print('\n')
+    print('{} 开始巡检'.format(timeee), '\n')
 
     # 模拟实际 按一定间隔 逐一发送巡检记录
     for name, data_list in data_dict.items():
@@ -98,7 +108,7 @@ def xunjian_timing(dict1, dict2):
         print('\r' + name + ' ' + errormsg + '！         ')
 
     print('\n')
-    print('{} 巡检结束'.format(timeee))
+    print('{} 巡检结束'.format(timeee), '\n')
 
     return
 
@@ -151,12 +161,24 @@ if __name__ == '__main__':
             # do 里的函数 参数直接跟后面,不能用括号() 不然报错!
             schedule.every().day.at(timing).do(xunjian_timing, d1, d2)
 
+        print('\n')
+
         while True:
             # 每30s 检查一次是否该巡检了  有2种方法？？？
             schedule.run_pending()
             # schedule.run_all(delay_seconds=30)
-            time.sleep(30)
 
+            # 等待下一次巡检显示 倒计时30秒
+            wait_time = 30
+            while wait_time >= 0:
+                print('\r' + '未到时间，等待{}s 后再检查'.format(wait_time), end='')
+                wait_time -= 1
+                time.sleep(1)
+
+            # time.sleep(30)
+
+    except KeyboardInterrupt:
+        pass
     except Exception as ex:
         print(ex)
 
