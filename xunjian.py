@@ -29,6 +29,13 @@ def send_record(data):
 
 
 if __name__ == '__main__':
+    print('''复制 温湿度记录 至此,可定时自动推送
+        不需带时间!!
+        输入完一个楼层后 :wq 退出,进入下一环节
+
+        绝对不能输入错误信息,否则后果不明.
+        ''')
+
     floor1_input = input('输入一楼温湿度：')
     floor2_input = input('输入二楼温湿度：')
 
@@ -73,8 +80,9 @@ if __name__ == '__main__':
                 'QTLSQK=%E6%97%A0&JFHZQK=%E6%97%A0&FWQQK_K=%E6%AD%A3%E5%B8%B8&WLSBQK_K=%E6%AD%A3%E5%B8%B8&JGMZT_K=%E6%AD%A3%E5%B8%B8&PDU_LEDQK_K=%E6%AD%A3%E5%B8%B8&ZYSB=%E6%AD%A3%E5%B8%B8&ZYDK=%E6%AD%A3%E5%B8%B8&JFWD={}&JFSD={}&WSQK=%E8%89%AF%E5%A5%BD&ZTQK=%E6%AD%A3%E5%B8%B8&checkinfo=&prj_sn=hbywl&ins_no=30001&ins_name=%E6%9D%AD%E5%B7%9E%E7%BA%A2%E5%AE%9D%E4%BA%91%E7%BD%91%E8%BF%90%E9%83%A8-%E6%9C%BA%E6%88%BF%E4%BA%94%E5%B7%A1%E6%A3%80&username=%E5%90%B4%E5%AE%B6%E6%9D%B0&__cmd=inspection&__param=add&uploadimages='.format(
                     k[0], k[1])],
     }
+
     print('\n')
-    print('开始', '\n')
+    print('开始巡检', '\n')
 
     for name, data_list in data_dict.items():
         # 模拟所需时间
@@ -86,14 +94,15 @@ if __name__ == '__main__':
             time.sleep(1)
 
         errormsg = send_record(data_list[1])
-        print('\r' + name + ' ' + errormsg)
+        print('\r' + name + ' ' + errormsg + '！         ')
 
     print('\n')
+    print('巡检结束', '\n')
 
     # 退出倒计时
     count_down = 3
     while count_down > 0:
-        print('\r' + '结束！ {}秒后退出！'.format(count_down), end='')  # \r 再打印 可以覆盖掉之前的
+        print('\r' + '将于{}秒后退出！'.format(count_down), end='')  # \r 再打印 可以覆盖掉之前的
         count_down -= 1
         time.sleep(1)
 
