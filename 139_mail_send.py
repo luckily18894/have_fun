@@ -132,7 +132,7 @@ if __name__ == '__main__':
     # 开始发送
     send_mail('smtp.139.com',  # mailsever
               '18368868186@139.com',  # username
-              'luCKi1y18894',  # password
+              'luCKi1y1889',  # password
               '18368868186@139.com',  # from
 
               to,  # to(s)
