@@ -6,7 +6,7 @@ import time
 import re
 
 
-# 支持读取多页回显（仅华为可用，思科暂不明确），可能有几个空行bug，应该可忽略
+# 支持读取多页回显（仅华为可用，思科暂不明确），已解决空行问题，就和CRT显示的一样~
 def ssh_cmd(ip, username, password, cmd_list, verbose=True):
     ssh = paramiko.SSHClient()  # 创建SSH Client
     ssh.load_system_host_keys()  # 加载系统SSH密钥
@@ -48,12 +48,12 @@ def ssh_cmd(ip, username, password, cmd_list, verbose=True):
 
     chan.close()  # 退出交互式shell
     ssh.close()  # 退出ssh会话
-    print([resul])
+    # print([resul])
     return resul, sysname
 
 
 def resule_to_txt(ipadd, cmd):
-    res, sysname = ssh_cmd(ipadd, 'wujiajie', '1ffw#1*dF', cmd)
+    res, sysname = ssh_cmd(ipadd, 'wujiajie', '1ffw#1*dF', cmd)  # ssh登录的 用户名 密码在此
     ti = datetime.datetime.now().strftime('%Y.%m.%d %H.%M.%S')
     with open('{} -- {} -- {}.txt'.format(sysname, ipadd, ti), 'w') as f:
         f.write(res)
@@ -62,6 +62,10 @@ def resule_to_txt(ipadd, cmd):
 
 if __name__ == '__main__':
     # print(ssh_cmd('192.168.0.97', 'wujiajie', '1ffw#1*dF', 'dis cu'))
-    resule_to_txt('218.205.90.52', 'dis cu')
 
+    try:
+        resule_to_txt('218.205.90.2', 'dis cu')  # 设备地址 命令
+
+    except Exception as ex:
+        print(ex)
 
