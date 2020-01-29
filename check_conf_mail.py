@@ -33,7 +33,7 @@ def ssh_multicmd(ip, username, password, cmd_list, verbose=True):
     time.sleep(2)  # 由于有些回显可能过长，所以可以考虑等待更长一些时间
     x = chan.recv(40960).decode()  # 读取回显，有些回显可能过长，请把接收缓存调大
 
-    abc = re.sub('---- More ----', '', x)
+    abc = re.sub('\s+----\sMore\s----', '', x)
     resul += abc
 
     # 一直空格 直到回显完
@@ -46,7 +46,7 @@ def ssh_multicmd(ip, username, password, cmd_list, verbose=True):
                 chan.send(b'\n')
                 time.sleep(2)
                 x = chan.recv(40960).decode()
-                abc = re.sub('---- More ----', '', x)
+                abc = re.sub('\s+----\sMore\s----', '', x)
                 resul += re.sub('\x1b\[42D[\s]+\x1b\[42D', '\r', abc)
                 # \x1b[42D                                          \x1b[42D
                 # 空格后回显会有上面这类字符，需要干掉
