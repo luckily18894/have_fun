@@ -27,7 +27,8 @@ def multicmd_ssh(ip, username, password, cmd_list, verbose=True):
     ssh = paramiko.SSHClient()  # 创建SSH Client
     ssh.load_system_host_keys()  # 加载系统SSH密钥
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # 添加新的SSH密钥
-    ssh.connect(ip, port=22, username=username, password=password, timeout=5, compress=True)  # SSH连接
+    # 修改 allow_agent=False, look_for_keys=False ，默认为true 可能会在某些服务器上导致 AuthenticationException: Authentication failed.
+    ssh.connect(ip, port=22, username=username, password=password, timeout=5, compress=True, allow_agent=False, look_for_keys=False)  # SSH连接
 
     chan = ssh.invoke_shell()  # 激活交互式shell
     time.sleep(1)
@@ -48,7 +49,8 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, delete_email=Fals
 
     while 1:
         try:
-            msgCount, msgBytes = server.stat()  # 查询邮件数量与字节数
+            print(server.getwelcome())  # 打印服务器欢迎信息
+            # msgCount, msgBytes = server.stat()  # 查询邮件数量与字节数
             hdr, message, octets = server.retr(48 + mail_number)  # 读取邮件（从最早的第一封开始的第几封）
             str_message = email.message_from_bytes(b'\n'.join(message))  # 把邮件内容拼接到大字符串
             part_list = []
@@ -68,10 +70,10 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, delete_email=Fals
             # 初始化附件为空列表
             mail_dict['Attachment'] = []
             mail_dict['Images'] = []
-            # print(mail_dict['Subject'])
+            print(mail_dict['Subject'])
 
             # 获取邮件标题中的 ip:xxx.xxx.xxx.xxx 读出需求的地址
-            addr = re.match('.*ip:\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}).*', mail_dict['Subject']).groups()[0]
+            addr = re.search('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', mail_dict['Subject']).groups()[0]
             # 补全命令（放开一个C）
             li1 = ['sys',
                    'policy interzone local untrust in',
@@ -82,15 +84,18 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, delete_email=Fals
                    'policy destination ' + addr + ' mask 24']
             # ssh登陆设备 敲命令
             multicmd_ssh('112.17.12.29', 'wujiajie', 'wujiajie@zmcc123', li1)
-            # print(addr + '   compelete!!')
+            print(addr + '   compelete!!')
+
+            with open('/root/saved_addr.txt', 'a') as f:
+                f.write(addr + '\n\r')
 
             # 下一封
             mail_number += 1
 
-            # 删除邮件(预留)False
+            # 删除邮件(预留)False  应该可以使用
             if delete_email:
-                for msg_id in range(msgCount):
-                    server.dele(msg_id + 1)
+                server.dele(48 + mail_number)
+                return
 
         # 标题不能匹配，下一个
         except AttributeError:
@@ -111,7 +116,28 @@ if __name__ == '__main__':
     mail_number = 0
     while 1:
         mail_number = recive_mail('pop3.js-datacraft.com', 'jj.wu@js-datacraft.com', 'luCKi1y18894', mail_number, delete_email=False)
-        # print(mail_number)
+        print('next round wait 150s')
         time.sleep(150)  # 每2分半 重新查看一遍邮箱
+
+    # a = '本机IP: 120.193.10.242浙江省杭州市 移动'
+    # addr = re.search('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', a).groups()[0]
+    # print(addr)
+
+    # addr = ['223.104.160.79',
+    #         ]
+    #
+    # for asd in addr:
+    #     li1 = ['sys',
+    #            'policy interzone local untrust in',
+    #            'policy 8',
+    #            'policy source ' + asd + ' mask 24',
+    #            'policy interzone local untrust out',
+    #            'policy 4',
+    #            'policy destination ' + asd + ' mask 24',
+    #            ]
+    #
+    #     # ssh登陆设备 敲命令
+    #     multicmd_ssh('112.17.12.29', 'wujiajie', 'wujiajie@zmcc123', li1)
+    #     print(asd + '   compelete!!')
 
 
