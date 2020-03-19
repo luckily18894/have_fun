@@ -1,6 +1,6 @@
 # -*- coding=utf-8 -*-
 
-import poplib, getpass, sys
+import poplib, socket
 import email
 import base64
 import paramiko
@@ -42,82 +42,104 @@ def multicmd_ssh(ip, username, password, cmd_list, verbose=True):
     ssh.close()  # 退出ssh会话
 
 
-def recive_mail(mailserver, mailuser, mailpasswd, mail_number, delete_email=False):
+def login_mail_server(mailserver, mailuser, mailpasswd):
     server = poplib.POP3_SSL(mailserver, 995)  # 连接到邮件服务器
     server.user(mailuser)  # 邮件服务器用户名
-    server.pass_(mailpasswd)  # 邮件服务器密码
+    server.pass_(mailpasswd)
+    return server
 
-    while 1:
-        try:
-            print(server.getwelcome())  # 打印服务器欢迎信息
-            # msgCount, msgBytes = server.stat()  # 查询邮件数量与字节数
-            hdr, message, octets = server.retr(48 + mail_number)  # 读取邮件（从最早的第一封开始的第几封）
-            str_message = email.message_from_bytes(b'\n'.join(message))  # 把邮件内容拼接到大字符串
-            part_list = []
-            mail_dict = {}
 
-            for part in str_message.walk():  # 把邮件的多个部分添加到part_list
-                part_list.append(part)
+def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delete_email=False):
 
-            # 把邮件的第一个[0]部分内容提取出来写入字典mail_dict
-            # 注意第一部分,所有邮件都会存在,是邮件的头部信息
-            for header_name, header_content in part_list[0].items():
-                if header_name == 'Subject':
-                    mail_dict[header_name] = decode_subject_base64(header_content)  # base64解码Subject
-                else:
-                    mail_dict[header_name] = header_content
+    try:
+        server = poplib.POP3_SSL(mailserver, 995)  # 连接到邮件服务器
+        server.user(mailuser)  # 邮件服务器用户名
+        server.pass_(mailpasswd)  # 邮件服务器密码
 
-            # 初始化附件为空列表
-            mail_dict['Attachment'] = []
-            mail_dict['Images'] = []
-            print(mail_dict['Subject'])
+        while 1:
+            try:
+                print(server.getwelcome())  # 打印服务器欢迎信息
+                # msgCount, msgBytes = server.stat()  # 查询邮件数量与字节数
+                hdr, message, octets = server.retr(47 + mail_number)  # 读取邮件（从最早的第一封开始的第几封）
+                str_message = email.message_from_bytes(b'\n'.join(message))  # 把邮件内容拼接到大字符串
+                part_list = []
+                mail_dict = {}
 
-            # 获取邮件标题中的 ip:xxx.xxx.xxx.xxx 读出需求的地址
-            addr = re.search('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', mail_dict['Subject']).groups()[0]
-            # 补全命令（放开一个C）
-            li1 = ['sys',
-                   'policy interzone local untrust in',
-                   'policy 8',
-                   'policy source ' + addr + ' mask 24',
-                   'policy interzone local untrust out',
-                   'policy 4',
-                   'policy destination ' + addr + ' mask 24']
-            # ssh登陆设备 敲命令
-            multicmd_ssh('112.17.12.29', 'wujiajie', 'wujiajie@zmcc123', li1)
-            print(addr + '   compelete!!')
+                for part in str_message.walk():  # 把邮件的多个部分添加到part_list
+                    part_list.append(part)
 
-            with open('/root/saved_addr.txt', 'a') as f:
-                f.write(addr + '\n\r')
+                # 把邮件的第一个[0]部分内容提取出来写入字典mail_dict
+                # 注意第一部分,所有邮件都会存在,是邮件的头部信息
+                for header_name, header_content in part_list[0].items():
+                    if header_name == 'Subject':
+                        mail_dict[header_name] = decode_subject_base64(header_content)  # base64解码Subject
+                    else:
+                        mail_dict[header_name] = header_content
 
-            # 下一封
-            mail_number += 1
+                # 初始化附件为空列表
+                mail_dict['Attachment'] = []
+                mail_dict['Images'] = []
+                print(mail_dict['Subject'])
 
-            # 删除邮件(预留)False  应该可以使用
-            if delete_email:
-                server.dele(48 + mail_number)
-                return
+                # 获取邮件标题中的 ip:xxx.xxx.xxx.xxx 读出需求的地址
+                addr = re.search('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', mail_dict['Subject']).groups()[0]
+                # 补全命令（放开一个C）
+                li1 = ['sys',
+                       'policy interzone local untrust in',
+                       'policy 8',
+                       'policy source ' + addr + ' mask 24',
+                       'policy interzone local untrust out',
+                       'policy 4',
+                       'policy destination ' + addr + ' mask 24']
+                # ssh登陆设备 敲命令
+                multicmd_ssh('112.17.12.29', 'wujiajie', 'wujiajie@zmcc123', li1)
+                print(addr + '   compelete!!')
 
-        # 标题不能匹配，下一个
-        except AttributeError:
-            time.sleep(2)
-            mail_number += 1
-        # 这一轮已经读完，退出等下一轮
-        except poplib.error_proto:
-            server.quit()  # 退出服务器
-            break
-        except KeyboardInterrupt:
-            server.quit()  # 退出服务器
-            break
+                with open('/root/saved_addr.txt', 'a') as f:
+                    f.write(addr + '\n\r')
 
-    return mail_number
+                # 下一封
+                mail_number += 1
+                try_number = 0  # 重置超时尝试次数
+
+                # 删除邮件(预留)False  应该可以使用
+                if delete_email:
+                    server.dele(48 + mail_number)
+                    return
+
+            # 标题不能匹配，下一个
+            except AttributeError:
+                time.sleep(2)
+                mail_number += 1
+            # 这一轮已经读完，退出等下一轮
+            except poplib.error_proto:
+                server.quit()  # 退出服务器
+                break
+            except KeyboardInterrupt:
+                server.quit()  # 退出服务器
+                break
+        return mail_number
+        # return
+
+    # 连接服务器超时 重试3次
+    except socket.gaierror:
+        if try_number < 3:
+            time.sleep(5)
+            try_number += 1
+            mail_number = recive_mail('pop3.js-datacraft.com', 'jj.wu@js-datacraft.com', 'luCKi1y18894', mail_number, try_number, delete_email=False)
+            return mail_number
+        else:
+            print('本轮连接服务器已超时3次')
+            return mail_number
 
 
 if __name__ == '__main__':
     mail_number = 0
+    try_number = 0
     while 1:
-        mail_number = recive_mail('pop3.js-datacraft.com', 'jj.wu@js-datacraft.com', 'luCKi1y18894', mail_number, delete_email=False)
-        print('next round wait 150s')
-        time.sleep(150)  # 每2分半 重新查看一遍邮箱
+        mail_number = recive_mail('pop3.js-datacraft.com', 'jj.wu@js-datacraft.com', 'luCKi1y18894', mail_number, try_number, delete_email=False)
+        print('next round wait 150s' + '   number=' + str(mail_number))
+        time.sleep(20)  # 每2分半 重新查看一遍邮箱
 
     # a = '本机IP: 120.193.10.242浙江省杭州市 移动'
     # addr = re.search('(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})', a).groups()[0]
