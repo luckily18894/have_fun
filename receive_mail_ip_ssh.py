@@ -106,7 +106,7 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delet
 
             while 1:
                 try:
-                    hdr, message, octets = server.retr(50 + mail_number)  # 读取邮件（从最早的第一封开始的第几封）
+                    hdr, message, octets = server.retr(49 + mail_number)  # 读取邮件（从最早的第一封开始的第几封）
                     str_message = email.message_from_bytes(b'\n'.join(message))  # 把邮件内容拼接到大字符串
                     part_list = []
                     mail_dict = {}
@@ -134,7 +134,7 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delet
                            'policy destination ' + addr + ' mask 24']
                     try:
                         # ssh登陆设备 敲命令
-                        multicmd_ssh('112.17.12.29', 'wujiajie', 'wujiajie@zmcc123', li1, tx)
+                        multicmd_ssh('112.17.', 'wwww', 'w123', li1, tx)
 
                         tx.write('\n' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) + '  ' + addr + '   compelete!!')
                         with open('/root/saved_addr.txt', 'a') as f:
@@ -146,7 +146,7 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delet
 
                         # 删除邮件(预留)False  应该可以使用
                         if delete_email:
-                            server.dele(48 + mail_number)
+                            server.dele(49 + mail_number)
                             return
 
                     # -----------------------------------------------------------------------
@@ -156,10 +156,9 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delet
                         time.sleep(10)
                         try:
                             # ssh登陆设备 敲命令
-                            multicmd_ssh('112.17.12.29', 'wujiajie', 'wujiajie@zmcc123', li1, tx)
+                            multicmd_ssh('112.17.', 'wwwwww', 'w123', li1, tx)
 
-                            tx.write('\n' + time.strftime("%Y-%m-%d %H:%M:%S",
-                                                          time.localtime()) + '  ' + addr + '   compelete!!')
+                            tx.write('\n' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) + '  ' + addr + '   compelete!!')
                             with open('/root/saved_addr.txt', 'a') as f:
                                 f.write('\n' + addr)
 
@@ -169,7 +168,7 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delet
 
                             # 删除邮件(预留)False  应该可以使用
                             if delete_email:
-                                server.dele(48 + mail_number)
+                                server.dele(49 + mail_number)
                                 return
 
                         # ssh连接超时（第二次）退出
@@ -201,7 +200,7 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delet
 
             return mail_number
 
-        # 连接服务器超时 重试3次
+        # 连接邮件服务器超时 重试3次
         except socket.gaierror:
             if try_number < 3:
                 tx.close()  # 先关了，不然又重复打开
@@ -213,7 +212,12 @@ def recive_mail(mailserver, mailuser, mailpasswd, mail_number, try_number, delet
                 tx.write('\n' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) + '  本轮连接服务器已超时3次')
                 return mail_number
 
-        # 再 手动 退出文件编辑，防止日志丢失
+        # 其他错误，防崩  但不会读下一封
+        except Exception as exce:
+            tx.write('\n' + time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()) + '  ' + str(exce) + ' mail_number=' + mail_number)
+            return mail_number
+
+        # 手动 退出文件编辑，防止日志丢失
         finally:
             tx.close()
 
@@ -259,6 +263,6 @@ if __name__ == '__main__':
     #            ]
     #
     #     # ssh登陆设备 敲命令
-    #     multicmd_ssh('112.17.12.29', 'wujiajie', 'wujiajie@zmcc123', li1)
+    #     multicmd_ssh('112.17.', 'wwww', 'w123', li1)
     #     print(asd + '   compelete!!')
 
