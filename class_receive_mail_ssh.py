@@ -19,7 +19,7 @@ class Autossh:
         # 初始化各参数，尽量集中在这里，方便修改
         self.mail_number = 0
         self.try_number = 0
-        self.mail_start_number = 115
+        self.mail_start_number = 130
         self.addr = ''
 
         self.file_dict = {
@@ -50,19 +50,6 @@ class Autossh:
                                '\n'
                                ]
 
-        self.add_cmd_list = [
-                             'sys',
-                             'policy interzone local untrust inbound',
-                             'policy 9',
-                             'action permit',
-                             'policy source ' + self.addr + ' mask 24',
-                             'policy interzone local untrust outbound',
-                             'policy 5',
-                             'action permit',
-                             'policy destination ' + self.addr + ' mask 24',
-                             '\n'
-                             ]
-
         self.ssh_dict = {
                          'ip': '112.17.12.29',
                          'username': 'wujiajie',
@@ -76,17 +63,34 @@ class Autossh:
                              'reset_successfully': ['自动重置策略成功!', '检测到策略已满，自动重置成功!']
                              }
 
+    def update_add_cmd_list(self):
+        self.add_cmd_list = [
+                             'sys',
+                             'policy interzone local untrust inbound',
+                             'policy 9',
+                             'action permit',
+                             'policy source ' + self.addr + ' mask 24',
+                             'policy interzone local untrust outbound',
+                             'policy 5',
+                             'action permit',
+                             'policy destination ' + self.addr + ' mask 24',
+                             '\n'
+                             ]
+
     @staticmethod
     def decode_subject_base64(stre):
         # 解码如下内容
         # =?utf-8?b?6ZmE5Lu25rWL6K+VX+S4u+mimA==?=
         #   utf-8   6ZmE5Lu25rWL6K+VX+S4u+mimA==   (转码后为:附件测试_主题)
+        # ['=?UTF-8?B?5pys5py6SVA6MTExLjIzLjE=?=\n =?UTF-8?B?NS4xMjPmuZbljZfnnIHplb/mspnluIIg56e75Yqo?=']  (怎么会有\n分段的)
         try:
-            re_result = re.match('=\?(.*)\?\w\?(.*)\?=', stre).groups()
-            # re_result[0] 为编码方式
-            middle = re_result[1]  # 提取base64的内容 6ZmE5Lu25rWL6K+VX+S4u+mimA==
-            decoded = base64.b64decode(middle)  # 对内容进行base64解码
-            decoded_stre = decoded.decode(re_result[0])  # 再对base64解码后内容,进行utf-8解码,转换为中文内容
+            decoded_stre = ''
+            for sss in stre.split('\n'):  # 解决有\n分段的问题
+                re_result = re.match('=\?(.*)\?\w\?(.*)\?=', sss.strip()).groups()
+                # re_result[0] 为编码方式
+                middle = re_result[1]  # 提取base64的内容 6ZmE5Lu25rWL6K+VX+S4u+mimA==
+                decoded = base64.b64decode(middle)  # 对内容进行base64解码
+                decoded_stre += decoded.decode(re_result[0])  # 再对base64解码后内容,进行utf-8解码,转换为中文内容
         except Exception:
             decoded_stre = stre
         return decoded_stre
@@ -138,9 +142,9 @@ class Autossh:
                 self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  回信已经成功发出! TO: ", time.localtime()) + msg["To"])
                 return
 
-        except Exception as self.ex:
+        except Exception as _ex:
             # 发信时会话会被服务器干掉，原因不明，重试3次，还不行就跳过，继续下一封
-            if re.search('Connection unexpectedly closed', str(self.ex)):
+            if re.search('Connection unexpectedly closed', str(_ex)):
                 self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + '  模块内部二次发送失败，waiting 15s' + '  send_try=' + str(send_try))
                 send_try += 1
                 # 重试3次
@@ -152,8 +156,16 @@ class Autossh:
                     self.send_mail(mailto, subj, main_body, send_try=send_try)  # 递归调用 用 send_try 来解决死循环
                     return
             else:
-                self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(self.ex) + '  发信时有其他错误！')
-                raise self.ex
+                self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(_ex) + '  发信时有其他错误！')
+                raise _ex
+
+    def server_connect(self):
+        server = poplib.POP3_SSL(self.mail_info['mailserver_pop3'], 995)  # 连接到邮件服务器
+        server.user(self.mail_info['mailuser'])  # 邮件服务器用户名
+        server.pass_(self.mail_info['mailpasswd'])  # 邮件服务器密码
+        # POP3对行长度做了限制，默认为_MAXLINE = 2048，故若是邮件超过此长度就会提示“poplib.error_proto: line too long”。解决方案：在读取邮件代码中重新定义最大行长度，即给poplib._MAXLINE设置新值。
+        poplib._MAXLINE = 20480
+        return server
 
     # 对每封邮件进行分值，做成dict
     def split_mail(self, server):
@@ -228,6 +240,7 @@ class Autossh:
 
     # 开始操作添加ip
     def start_kaifang(self):
+        self.update_add_cmd_list()
         # ssh登陆设备 敲命令
         ret = self.multicmd_ssh(self.add_cmd_list)
 
@@ -241,8 +254,8 @@ class Autossh:
                                )
 
             # Connection unexpectedly closed 连不上邮箱smtp??  10秒后再重试一次(但不论最终成功否，都会继续读下一封)
-            except Exception as self.ex:
-                if re.match('Connection unexpectedly closed', str(self.ex)) or re.match('Name or service not known', str(self.ex)):
+            except Exception as _ex:
+                if re.match('Connection unexpectedly closed', str(_ex)) or re.match('Name or service not known', str(_ex)):
                     time.sleep(15)
                     self.send_mail(
                                    '=?GB2312?B?zuK80r3c?= <18368868186@139.com>',  # 收信人
@@ -250,13 +263,14 @@ class Autossh:
                                    time.strftime("[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + self.respond_dict[ret][1],
                                    )
                 else:
-                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  回复邮件发送失败，reason= ", time.localtime()) + str(self.ex))
+                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  回复邮件发送失败，reason= ", time.localtime()) + str(_ex))
             return 'reset'
 
         else:  # 其他正常情况
             self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + self.addr + '   compelete!!')
             # 如果是已存在的情况，就不在 saved_addr.txt 中写入
             if ret != 'exists':
+                self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + self.addr + '   已存在!')
                 with open(self.file_dict['saved_addr'], 'a') as f:
                     # 对齐下格式
                     f.write('\n{}  {:<15}  From: {}'.format(time.strftime("[%Y-%m-%d %H:%M:%S]", time.localtime()), self.addr, self.mail_dict['fr']))
@@ -264,20 +278,20 @@ class Autossh:
                 self.send_mail(
                                self.mail_dict['From'],  # 收信人
                                self.respond_dict[ret][0],
-                               '您好' + self.mail_dict['fr'] + time.strftime(":\n     [%Y-%m-%d %H:%M:%S]  您的地址", time.localtime()) + self.addr + self.respond_dict[ret][1],
+                               '您好 ' + self.mail_dict['fr'] + time.strftime(":\n     [%Y-%m-%d %H:%M:%S]  您的地址", time.localtime()) + self.addr + self.respond_dict[ret][1],
                                )
 
             # Connection unexpectedly closed 连不上邮箱smtp??  10秒后再重试一次(但不论最终成功否，都会继续读下一封)
-            except Exception as self.ex:
-                if re.match('Connection unexpectedly closed', str(self.ex)) or re.match('Name or service not known', str(self.ex)):
+            except Exception as _ex:
+                if re.match('Connection unexpectedly closed', str(_ex)) or re.match('Name or service not known', str(_ex)):
                     time.sleep(10)
                     self.send_mail(
                                    self.mail_dict['From'],  # 收信人
                                    self.respond_dict[ret][0],
-                                   '您好' + self.mail_dict['fr'] + time.strftime(":\n     [%Y-%m-%d %H:%M:%S]  您的地址", time.localtime()) + self.addr + self.respond_dict[ret][1],
+                                   '您好 ' + self.mail_dict['fr'] + time.strftime(":\n     [%Y-%m-%d %H:%M:%S]  您的地址", time.localtime()) + self.addr + self.respond_dict[ret][1],
                                    )
                 else:
-                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  回复邮件发送失败，reason= ", time.localtime()) + str(self.ex))
+                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  回复邮件发送失败，reason= ", time.localtime()) + str(_ex))
 
             # 删除邮件(预留)False  应该可以使用(并不行..)
             # if delete_email:
@@ -290,11 +304,12 @@ class Autossh:
     def controll_mail(self, delete_email=False):
         with open(self.file_dict['mail_log'], 'a') as self.tx:
             try:
-                server = poplib.POP3_SSL(self.mail_info['mailserver_pop3'], 995)  # 连接到邮件服务器
-                server.user(self.mail_info['mailuser'])  # 邮件服务器用户名
-                server.pass_(self.mail_info['mailpasswd'])  # 邮件服务器密码
-                # POP3对行长度做了限制，默认为_MAXLINE = 2048，故若是邮件超过此长度就会提示“poplib.error_proto: line too long”。解决方案：在读取邮件代码中重新定义最大行长度，即给poplib._MAXLINE设置新值。
-                poplib._MAXLINE = 20480
+                server = self.server_connect()
+                # server = poplib.POP3_SSL(self.mail_info['mailserver_pop3'], 995)  # 连接到邮件服务器
+                # server.user(self.mail_info['mailuser'])  # 邮件服务器用户名
+                # server.pass_(self.mail_info['mailpasswd'])  # 邮件服务器密码
+                # # POP3对行长度做了限制，默认为_MAXLINE = 2048，故若是邮件超过此长度就会提示“poplib.error_proto: line too long”。解决方案：在读取邮件代码中重新定义最大行长度，即给poplib._MAXLINE设置新值。
+                # poplib._MAXLINE = 20480
 
                 # 打印服务器欢迎信息
                 self.tx.write(time.strftime("\n\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(server.getwelcome()))
@@ -340,7 +355,7 @@ class Autossh:
                                 self.send_mail(
                                                self.mail_dict['From'],  # 收信人
                                                self.respond_dict['deny'][0],
-                                               '您好 ' + self.mail_dict['fr'] + time.strftime(":\n     [%Y-%m-%d %H:%M:%S]  您的地址", time.localtime()) + self.addr + self.respond_dict['deny'][0],
+                                               '您好 ' + self.mail_dict['fr'] + time.strftime(":\n     [%Y-%m-%d %H:%M:%S]  您的地址", time.localtime()) + self.addr + self.respond_dict['deny'][1],
                                                )
                             else:  # check_ip_zmcc() == 'need to be added'
                                 # 若在白名单里的人，可执行操作，已添加命令act per
@@ -405,8 +420,8 @@ class Autossh:
                             return self.mail_number
 
                     # IP地址格式有误 298.1.1.1 (样例)
-                    except ValueError as self.ex:
-                        if re.findall('does not appear to be an IPv4 or IPv6 address', str(self.ex)):
+                    except ValueError as _ex:
+                        if re.findall('does not appear to be an IPv4 or IPv6 address', str(_ex)):
                             self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  地址有误!", time.localtime()))
                             self.mail_number += 1
                     # 标题不能匹配，下一个
@@ -436,40 +451,40 @@ class Autossh:
 
             # ----------------------------------------需测试就把下面的注释掉----------------------------------------------------
             # 其他错误，防崩(此处重要，尽量别崩在这！)  但不会读下一封(更新标题为空，下一封。为什么有SB这么发！)
-            except Exception as self.ex:
-                if re.match('\'Subject\'', str(self.ex)):
+            except Exception as _ex:
+                if re.match('\'Subject\'', str(_ex)):
                     self.mail_number += 1
                     self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  标题为空!", time.localtime()))
                     return self.mail_number
 
                 # 这个问题的原因暂不明 连接邮箱服务器时偶尔会有此报错
-                elif re.search('Connection reset by peer', str(self.ex)):
-                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(self.ex) + ' mail_number=' + str(self.mail_number))
+                elif re.search('Connection reset by peer', str(_ex)):
+                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(_ex) + ' mail_number=' + str(self.mail_number))
                     return self.mail_number
 
                 # 发送的时候会有超时后30s模块内部重试？？第二次发送时，可能会产生此报错；本次回复邮件发不出就算了，继续下一封
-                elif re.search('Connection unexpectedly closed', str(self.ex)):
-                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(self.ex) + ' mail_number=' + str(self.mail_number) + '  模块内部二次发送失败，waiting 15s')
+                elif re.search('Connection unexpectedly closed', str(_ex)):
+                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(_ex) + ' mail_number=' + str(self.mail_number) + '  模块内部二次发送失败，waiting 15s')
                     self.mail_number += 1
                     return self.mail_number
 
                 # 其他问题，发邮件通知我
                 else:
-                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(self.ex) + ' mail_number=' + str(self.mail_number))
+                    self.tx.write(time.strftime("\n[%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(_ex) + ' mail_number=' + str(self.mail_number))
                     self.mail_number += 1
                     try:
                         self.send_mail(
                                        '=?GB2312?B?zuK80r3c?= <18368868186@139.com>',  # 收信人
                                        '代码捕获其他错误!',
-                                       time.strftime("\n     [%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(self.ex)
+                                       time.strftime("\n     [%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(_ex)
                                        )
-                    except Exception as self.ex:
-                        if re.search('Connection unexpectedly closed', str(self.ex)):
+                    except Exception as _ex:
+                        if re.search('Connection unexpectedly closed', str(_ex)):
                             time.sleep(10)
                             self.send_mail(
                                            '=?GB2312?B?zuK80r3c?= <18368868186@139.com>',  # 收信人
                                            '代码捕获其他错误!',
-                                           time.strftime("\n     [%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(self.ex)
+                                           time.strftime("\n     [%Y-%m-%d %H:%M:%S]  ", time.localtime()) + str(_ex)
                                            )
                     return self.mail_number
             # ----------------------------------------需测试就把上面的注释掉----------------------------------------------------
@@ -490,4 +505,7 @@ class Autossh:
 if __name__ == '__main__':
     autossh = Autossh()
     autossh.keep_running()
-
+    # autossh.mail_start_number = 196
+    # autossh.split_mail(autossh.server_connect())
+    # for k, v in autossh.mail_dict.items():
+    #     print(k, v)
